@@ -26,6 +26,19 @@ export const en: Translation = {
       passwordTooShort: 'Password must be at least 8 characters',
       passwordMismatch: 'Passwords do not match',
     },
+    errors: {
+      invalidCredentials: 'Incorrect email or password',
+      emailNotConfirmed: 'Your email is not confirmed yet. Please check your inbox.',
+      emailAlreadyRegistered: 'This email is already registered',
+      weakPassword: 'The password is too weak. Please choose another one.',
+      emailInvalid: 'Invalid email address',
+      signupDisabled: 'Sign-ups are currently disabled',
+      rateLimited: 'Too many attempts. Please try again later.',
+      network: "Couldn't reach the server. Check your connection and try again.",
+      signupFailed:
+        "Couldn't create the account. Please check your details and try again. If the problem continues, try a different username.",
+      unexpected: 'Something went wrong. Please try again.',
+    },
   },
   config: {
     title: 'Server connection not configured',

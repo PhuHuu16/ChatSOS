@@ -26,6 +26,19 @@ export const vi = {
       passwordTooShort: 'Mật khẩu cần ít nhất 8 ký tự',
       passwordMismatch: 'Mật khẩu xác nhận không khớp',
     },
+    errors: {
+      invalidCredentials: 'Email hoặc mật khẩu không đúng',
+      emailNotConfirmed: 'Email chưa được xác nhận. Vui lòng kiểm tra hộp thư.',
+      emailAlreadyRegistered: 'Email này đã được đăng ký',
+      weakPassword: 'Mật khẩu chưa đủ mạnh. Vui lòng chọn mật khẩu khác.',
+      emailInvalid: 'Email không hợp lệ',
+      signupDisabled: 'Hiện chưa thể đăng ký tài khoản mới',
+      rateLimited: 'Bạn thao tác quá nhiều lần. Vui lòng thử lại sau.',
+      network: 'Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.',
+      signupFailed:
+        'Không thể tạo tài khoản. Vui lòng kiểm tra thông tin và thử lại. Nếu lỗi tiếp tục xảy ra, hãy thử một username khác.',
+      unexpected: 'Đã có lỗi xảy ra. Vui lòng thử lại.',
+    },
   },
   config: {
     title: 'Chưa cấu hình kết nối máy chủ',
