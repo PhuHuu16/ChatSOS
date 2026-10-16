@@ -101,39 +101,42 @@ functions as (
   from expected_functions e
   left join pg_catalog.pg_proc p on p.oid = to_regprocedure(e.signature)
 ),
--- Each policy, fragments that must appear in its USING / WITH CHECK expression, and
--- fragments that must appear in neither. Storage policies forbid ' OR ' (as printed
--- by PostgreSQL) so an expression cannot keep the required parts and still be
--- widened, e.g. "... AND private.can_access_attachment(name) OR true".
-expected_policies (schema_name, table_name, policy_name, command, using_must_contain, check_must_contain, must_not_contain) as (
+-- Each policy with its exact USING and WITH CHECK expressions, verbatim as PostgreSQL
+-- prints them in pg_policies (captured from the deployed schema, step 1B, 2026-10-16).
+-- null means the policy has no such expression. Compared with IS NOT DISTINCT FROM and
+-- no normalisation, so any edit (e.g. an added "OR true") fails the check.
+-- The printed form depends on search_path: run this in the SQL Editor, where neither
+-- auth nor private is on the path. A PostgreSQL upgrade may also change the printing.
+-- If a policy check then fails, compare the detail column before touching the policy.
+expected_policies (schema_name, table_name, policy_name, command, expected_using, expected_check) as (
   values
     ('public', 'profiles', 'profiles: signed-in users can read', 'SELECT',
-      array['true'], array[]::text[], array[]::text[]),
+      'true',
+      null::text),
     ('public', 'profiles', 'profiles: users update their own', 'UPDATE',
-      array['auth.uid()'], array['auth.uid()'], array[]::text[]),
+      '(id = ( SELECT auth.uid() AS uid))',
+      '(id = ( SELECT auth.uid() AS uid))'),
     ('public', 'conversations', 'conversations: members can read', 'SELECT',
-      array['private.is_member(id)'], array[]::text[], array[]::text[]),
+      'private.is_member(id)',
+      null::text),
     ('public', 'conversation_members', 'conversation_members: members can read the member list', 'SELECT',
-      array['private.is_member(conversation_id)'], array[]::text[], array[]::text[]),
+      'private.is_member(conversation_id)',
+      null::text),
     ('public', 'conversation_members', 'conversation_members: users update their own read marker', 'UPDATE',
-      array['user_id', 'auth.uid()'], array['user_id', 'auth.uid()'], array[]::text[]),
+      '(user_id = ( SELECT auth.uid() AS uid))',
+      '(user_id = ( SELECT auth.uid() AS uid))'),
     ('public', 'messages', 'messages: members can read', 'SELECT',
-      array['private.is_member(conversation_id)'], array[]::text[], array[]::text[]),
+      'private.is_member(conversation_id)',
+      null::text),
     ('public', 'messages', 'messages: members send as themselves', 'INSERT',
-      array[]::text[], array['sender_id', 'auth.uid()', 'private.is_member(conversation_id)'], array[]::text[]),
+      null::text,
+      '((sender_id = ( SELECT auth.uid() AS uid)) AND private.is_member(conversation_id))'),
     ('storage', 'objects', 'attachments: members can read', 'SELECT',
-      array['bucket_id = ''attachments''', 'private.can_access_attachment(name)'],
-      array[]::text[],
-      array[' OR ']),
+      '((bucket_id = ''attachments''::text) AND private.can_access_attachment(name))',
+      null::text),
     ('storage', 'objects', 'attachments: members can upload new files', 'INSERT',
-      array[]::text[],
-      array[
-        'bucket_id = ''attachments''',
-        'private.can_access_attachment(name)',
-        'name ~ ''^[0-9a-f]{8}-',
-        '\.(jpg|jpeg|png|webp|gif|pdf|txt|zip|docx|xlsx|pptx)$'''
-      ],
-      array[' OR '])
+      null::text,
+      '((bucket_id = ''attachments''::text) AND (name ~ ''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|jpeg|png|webp|gif|pdf|txt|zip|docx|xlsx|pptx)$''::text) AND private.can_access_attachment(name))')
 ),
 expected_constraints (table_name, constraint_name) as (
   values
@@ -339,7 +342,8 @@ checks (name, ok, detail) as (
     null
 
   union all
-  -- Policies: exist, permissive, for authenticated only, right command, right expressions
+  -- Policies: exist with this name, for this command, PERMISSIVE, for authenticated only,
+  -- and with exactly the approved USING / WITH CHECK (null must stay null).
   select
     format('policy ok: %s.%s "%s" (%s)', e.schema_name, e.table_name, e.policy_name, e.command),
     exists (
@@ -351,24 +355,26 @@ checks (name, ok, detail) as (
         and p.cmd = e.command
         and p.permissive = 'PERMISSIVE'
         and p.roles = array['authenticated']::name[]
-        and not exists (
-          select 1 from unnest(e.using_must_contain) as f
-          where strpos(coalesce(p.qual, ''), f) = 0
-        )
-        and not exists (
-          select 1 from unnest(e.check_must_contain) as f
-          where strpos(coalesce(p.with_check, ''), f) = 0
-        )
-        and not exists (
-          select 1 from unnest(e.must_not_contain) as f
-          where strpos(coalesce(p.qual, '') || ' | ' || coalesce(p.with_check, ''), f) > 0
-        )
+        and p.qual is not distinct from e.expected_using
+        and p.with_check is not distinct from e.expected_check
     ),
-    (
-      select 'USING: ' || coalesce(p.qual, '-') || ' | CHECK: ' || coalesce(p.with_check, '-')
+    -- On a mismatch, show actual vs. expected; <null> marks a missing expression.
+    coalesce((
+      select
+        case
+          when p.qual is not distinct from e.expected_using
+           and p.with_check is not distinct from e.expected_check
+          then format('cmd=%s, %s, roles=%s', p.cmd, p.permissive, p.roles)
+          else format(
+            'cmd=%s, %s, roles=%s | USING actual: %s | USING expected: %s | CHECK actual: %s | CHECK expected: %s',
+            p.cmd, p.permissive, p.roles,
+            coalesce(p.qual, '<null>'), coalesce(e.expected_using, '<null>'),
+            coalesce(p.with_check, '<null>'), coalesce(e.expected_check, '<null>')
+          )
+        end
       from pg_catalog.pg_policies p
       where p.schemaname = e.schema_name and p.tablename = e.table_name and p.policyname = e.policy_name
-    )
+    ), 'policy not found')
   from expected_policies e
   union all
   select
