@@ -27,4 +27,13 @@ export const en: Translation = {
       passwordMismatch: 'Passwords do not match',
     },
   },
+  config: {
+    title: 'Server connection not configured',
+    description:
+      'ChatSOS is not configured to connect to its server. Please contact the administrator.',
+    loadFailedTitle: "Couldn't load the app",
+    loadFailedDescription:
+      'Something went wrong while loading ChatSOS. Check your connection and try again.',
+    reload: 'Reload',
+  },
 }

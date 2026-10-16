@@ -27,6 +27,14 @@ export const vi = {
       passwordMismatch: 'Mật khẩu xác nhận không khớp',
     },
   },
+  config: {
+    title: 'Chưa cấu hình kết nối máy chủ',
+    description:
+      'ChatSOS chưa được cấu hình đúng để kết nối máy chủ. Vui lòng liên hệ quản trị viên.',
+    loadFailedTitle: 'Không tải được ứng dụng',
+    loadFailedDescription: 'Đã có lỗi khi tải ChatSOS. Vui lòng kiểm tra kết nối và thử lại.',
+    reload: 'Tải lại',
+  },
 }
 
 export type Translation = typeof vi
