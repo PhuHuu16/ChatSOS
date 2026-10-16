@@ -15,4 +15,16 @@ export const en: Translation = {
     send: 'Send',
     previewNotice: 'Preview mode: sending messages is not available yet',
   },
+  auth: {
+    validation: {
+      required: 'This field is required',
+      usernameFormat:
+        'Username must be 3–32 characters: lowercase letters, digits or underscores',
+      displayNameLength: 'Display name must be 1 to 64 characters',
+      displayNameInvalid: 'Display name contains invalid characters',
+      emailInvalid: 'Invalid email address',
+      passwordTooShort: 'Password must be at least 8 characters',
+      passwordMismatch: 'Passwords do not match',
+    },
+  },
 }
