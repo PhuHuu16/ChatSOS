@@ -6,6 +6,7 @@ import {
   type AuthContextValue,
   type AuthStatus,
   type SignInResult,
+  type SignOutResult,
   type SignUpInput,
   type SignUpResult,
 } from './authContext'
@@ -41,13 +42,17 @@ async function signUp({ email, password, username, displayName }: SignUpInput): 
   }
 }
 
-async function signOut(): Promise<void> {
+async function signOut(): Promise<SignOutResult> {
   try {
-    // 'local' signs out this device only. auth-js clears the local session even when the
-    // server call returns an error, and the listener then reports the signed-out state.
-    await supabase.auth.signOut({ scope: 'local' })
+    // 'local' signs out this device only. When the stored session is removed, the listener
+    // receives SIGNED_OUT before this resolves. An error does not tell whether that
+    // happened: auth-js (2.117) still removes the session after most server errors, but
+    // keeps it when the current session cannot be read or refreshed (e.g. offline).
+    // The listener reports which; callers must not treat ok: false as "still signed in".
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
+    return { ok: !error }
   } catch {
-    // Not shown to the user; the listener reflects whatever session remains.
+    return { ok: false }
   }
 }
 

@@ -16,6 +16,9 @@ export const en: Translation = {
     previewNotice: 'Preview mode: sending messages is not available yet',
   },
   auth: {
+    loading: 'Loading…',
+    logout: 'Sign out',
+    loggingOut: 'Signing out…',
     fields: {
       username: 'Username',
       displayName: 'Display name',
@@ -64,6 +67,7 @@ export const en: Translation = {
       signupFailed:
         "Couldn't create the account. Please check your details and try again. If the problem continues, try a different username.",
       unexpected: 'Something went wrong. Please try again.',
+      signOutFailed: "Couldn't sign out. Check your connection and try again.",
     },
   },
   config: {

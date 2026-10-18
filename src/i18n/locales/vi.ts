@@ -15,6 +15,9 @@ export const vi = {
     previewNotice: 'Chế độ xem trước: chưa thể gửi tin nhắn',
   },
   auth: {
+    loading: 'Đang tải…',
+    logout: 'Đăng xuất',
+    loggingOut: 'Đang đăng xuất…',
     fields: {
       username: 'Tên người dùng',
       displayName: 'Tên hiển thị',
@@ -64,6 +67,7 @@ export const vi = {
       signupFailed:
         'Không thể tạo tài khoản. Vui lòng kiểm tra thông tin và thử lại. Nếu lỗi tiếp tục xảy ra, hãy thử một username khác.',
       unexpected: 'Đã có lỗi xảy ra. Vui lòng thử lại.',
+      signOutFailed: 'Không thể đăng xuất. Vui lòng kiểm tra kết nối và thử lại.',
     },
   },
   config: {

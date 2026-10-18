@@ -15,6 +15,9 @@ export type SignUpResult =
   | { ok: true; needsEmailConfirmation: boolean }
   | { ok: false; error: AuthErrorKey }
 
+// ok: false does not say whether the session is gone; the auth status reports that.
+export type SignOutResult = { ok: boolean }
+
 // Values must already be validated and trimmed (see validation.ts); passwords are not trimmed.
 export interface SignUpInput {
   email: string
@@ -28,7 +31,7 @@ export interface AuthContextValue {
   session: Session | null
   signIn: (email: string, password: string) => Promise<SignInResult>
   signUp: (input: SignUpInput) => Promise<SignUpResult>
-  signOut: () => Promise<void>
+  signOut: () => Promise<SignOutResult>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
