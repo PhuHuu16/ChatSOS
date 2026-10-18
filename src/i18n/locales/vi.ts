@@ -15,6 +15,32 @@ export const vi = {
     previewNotice: 'Chế độ xem trước: chưa thể gửi tin nhắn',
   },
   auth: {
+    fields: {
+      username: 'Tên người dùng',
+      displayName: 'Tên hiển thị',
+      email: 'Email',
+      password: 'Mật khẩu',
+      passwordConfirm: 'Xác nhận mật khẩu',
+      showPassword: 'Hiện mật khẩu',
+      hidePassword: 'Ẩn mật khẩu',
+    },
+    login: {
+      title: 'Đăng nhập',
+      submit: 'Đăng nhập',
+      submitting: 'Đang đăng nhập…',
+      noAccount: 'Chưa có tài khoản?',
+      toRegister: 'Đăng ký',
+    },
+    register: {
+      title: 'Tạo tài khoản',
+      submit: 'Đăng ký',
+      submitting: 'Đang tạo tài khoản…',
+      hasAccount: 'Đã có tài khoản?',
+      toLogin: 'Đăng nhập',
+      checkInboxTitle: 'Kiểm tra hộp thư',
+      checkInboxBody:
+        'Nếu địa chỉ {{email}} hợp lệ, bạn sẽ nhận được email xác nhận. Hãy mở liên kết trong email rồi đăng nhập.',
+    },
     validation: {
       required: 'Vui lòng nhập thông tin này',
       usernameFormat:

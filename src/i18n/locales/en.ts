@@ -16,6 +16,32 @@ export const en: Translation = {
     previewNotice: 'Preview mode: sending messages is not available yet',
   },
   auth: {
+    fields: {
+      username: 'Username',
+      displayName: 'Display name',
+      email: 'Email',
+      password: 'Password',
+      passwordConfirm: 'Confirm password',
+      showPassword: 'Show password',
+      hidePassword: 'Hide password',
+    },
+    login: {
+      title: 'Sign in',
+      submit: 'Sign in',
+      submitting: 'Signing in…',
+      noAccount: "Don't have an account?",
+      toRegister: 'Sign up',
+    },
+    register: {
+      title: 'Create account',
+      submit: 'Sign up',
+      submitting: 'Creating account…',
+      hasAccount: 'Already have an account?',
+      toLogin: 'Sign in',
+      checkInboxTitle: 'Check your inbox',
+      checkInboxBody:
+        'If {{email}} is valid, you will receive a confirmation email. Open the link in it, then sign in.',
+    },
     validation: {
       required: 'This field is required',
       usernameFormat:
