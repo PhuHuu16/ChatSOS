@@ -2,12 +2,15 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { findUser, formatTime, getConversationTitle } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
+import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
+import { LoadStatus } from '../LoadStatus'
 
 interface ChatPanelProps {
   conversation: Conversation | null
-  messages: Message[]
+  // Messages of `conversation`, oldest first.
+  messages: ChatQueryState<Message[]>
   users: User[]
   currentUserId: string
   onBack: () => void
@@ -17,13 +20,13 @@ export function ChatPanel({ conversation, messages, users, currentUserId, onBack
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
   const listRef = useRef<HTMLDivElement>(null)
-  const conversationId = conversation?.id
+  const loaded = messages.status === 'ready' ? messages.data : null
 
-  // Jump to the newest message whenever another conversation is opened.
+  // Jump to the newest message whenever a conversation's messages have loaded.
   useEffect(() => {
     const list = listRef.current
     if (list) list.scrollTop = list.scrollHeight
-  }, [conversationId])
+  }, [loaded])
 
   if (!conversation) {
     return (
@@ -61,8 +64,15 @@ export function ChatPanel({ conversation, messages, users, currentUserId, onBack
       </header>
 
       <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4">
+        {messages.status === 'loading' && <LoadStatus status="loading" />}
+        {messages.status === 'error' && (
+          <LoadStatus status="error" error={messages.error} onRetry={messages.retry} />
+        )}
+        {loaded?.length === 0 && (
+          <p className="py-6 text-center text-sm text-slate-500">{t('chat.noMessages')}</p>
+        )}
         <ol className="flex flex-col gap-2">
-          {messages.map((message) => {
+          {(loaded ?? []).map((message) => {
             const isMine = message.senderId === currentUserId
             const senderName =
               isGroup && !isMine ? findUser(users, message.senderId)?.displayName : undefined

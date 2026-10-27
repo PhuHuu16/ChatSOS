@@ -34,17 +34,6 @@ export function getLastMessage(messages: Message[], conversationId: string): Mes
   return getMessages(messages, conversationId).at(-1)
 }
 
-export function sortConversationsByLastMessage(
-  conversations: Conversation[],
-  messages: Message[],
-): Conversation[] {
-  const lastTime = (conversation: Conversation) => {
-    const last = getLastMessage(messages, conversation.id)
-    return last ? Date.parse(last.createdAt) : -Infinity
-  }
-  return [...conversations].sort((a, b) => lastTime(b) - lastTime(a))
-}
-
 export function formatTime(iso: string, language: string): string {
   return new Intl.DateTimeFormat(language, { hour: '2-digit', minute: '2-digit' }).format(
     new Date(iso),

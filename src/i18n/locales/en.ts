@@ -14,6 +14,10 @@ export const en: Translation = {
     composerPlaceholder: 'Write a message…',
     send: 'Send',
     previewNotice: 'Preview mode: sending messages is not available yet',
+    loading: 'Loading…',
+    retry: 'Try again',
+    noConversations: 'No chats yet',
+    noMessages: 'No messages yet',
     errors: {
       network: "Couldn't reach the server. Check your connection and try again.",
       loadFailed: "Couldn't load the chat. Please try again.",

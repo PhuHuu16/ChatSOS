@@ -13,6 +13,10 @@ export const vi = {
     composerPlaceholder: 'Nhập tin nhắn…',
     send: 'Gửi',
     previewNotice: 'Chế độ xem trước: chưa thể gửi tin nhắn',
+    loading: 'Đang tải…',
+    retry: 'Thử lại',
+    noConversations: 'Chưa có cuộc trò chuyện nào',
+    noMessages: 'Chưa có tin nhắn nào',
     errors: {
       network: 'Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.',
       loadFailed: 'Không tải được cuộc trò chuyện. Vui lòng thử lại.',

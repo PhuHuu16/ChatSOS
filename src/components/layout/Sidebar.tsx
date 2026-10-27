@@ -6,13 +6,18 @@ import {
   getLastMessage,
 } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
+import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
 import { LanguageSwitcher } from '../LanguageSwitcher'
+import { LoadStatus } from '../LoadStatus'
 
 interface SidebarProps {
+  // Load state of the list; the data itself comes in the props below.
+  list: ChatQueryState<unknown>
   conversations: Conversation[]
-  messages: Message[]
+  // The newest message of each conversation that has one.
+  lastMessages: Message[]
   users: User[]
   currentUserId: string
   selectedId: string | null
@@ -23,8 +28,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  list,
   conversations,
-  messages,
+  lastMessages,
   users,
   currentUserId,
   selectedId,
@@ -60,10 +66,17 @@ export function Sidebar({
       )}
 
       <nav aria-label={t('chat.listLabel')} className="flex-1 overflow-y-auto">
+        {list.status === 'loading' && <LoadStatus status="loading" />}
+        {list.status === 'error' && (
+          <LoadStatus status="error" error={list.error} onRetry={list.retry} />
+        )}
+        {list.status === 'ready' && conversations.length === 0 && (
+          <p className="px-4 py-6 text-center text-sm text-slate-500">{t('chat.noConversations')}</p>
+        )}
         <ul>
           {conversations.map((conversation) => {
             const title = getConversationTitle(conversation, users, currentUserId)
-            const last = getLastMessage(messages, conversation.id)
+            const last = getLastMessage(lastMessages, conversation.id)
             const isSelected = conversation.id === selectedId
 
             let prefix = ''
