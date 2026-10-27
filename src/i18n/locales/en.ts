@@ -14,6 +14,14 @@ export const en: Translation = {
     composerPlaceholder: 'Write a message…',
     send: 'Send',
     previewNotice: 'Preview mode: sending messages is not available yet',
+    errors: {
+      network: "Couldn't reach the server. Check your connection and try again.",
+      loadFailed: "Couldn't load the chat. Please try again.",
+      sendFailed: "Couldn't send the message. Please try again.",
+      notAllowed: "You can't do this, or your session has expired.",
+      messageEmpty: "The message can't be empty.",
+      messageTooLong: 'A message can be at most {{max}} characters.',
+    },
   },
   auth: {
     loading: 'Loading…',

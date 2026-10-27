@@ -13,6 +13,14 @@ export const vi = {
     composerPlaceholder: 'Nhập tin nhắn…',
     send: 'Gửi',
     previewNotice: 'Chế độ xem trước: chưa thể gửi tin nhắn',
+    errors: {
+      network: 'Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.',
+      loadFailed: 'Không tải được cuộc trò chuyện. Vui lòng thử lại.',
+      sendFailed: 'Không gửi được tin nhắn. Vui lòng thử lại.',
+      notAllowed: 'Bạn không có quyền thực hiện thao tác này, hoặc phiên đăng nhập đã hết hạn.',
+      messageEmpty: 'Tin nhắn không được để trống.',
+      messageTooLong: 'Tin nhắn tối đa {{max}} ký tự.',
+    },
   },
   auth: {
     loading: 'Đang tải…',
