@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react'
-import { MESSAGE_PAGE_SIZE, sendTextMessage, type ChatResult } from './api'
+import { sendTextMessage, type ChatResult } from './api'
 import type { ChatErrorKey } from './chatErrors'
-import { compareMessages } from './helpers'
 import type { Message } from './types'
 
 // A text message the server has not confirmed yet.
@@ -87,24 +86,4 @@ export function useOutgoingMessages(): OutgoingMessages {
   }, [])
 
   return { pending, sent, send, retry, discard }
-}
-
-// `loaded` (oldest first) plus this conversation's sent messages it does not have yet.
-// When `loaded` is a full page it may not reach back to older sent messages; those are
-// left out so no gap appears between them and the page.
-export function withSentMessages(
-  loaded: Message[],
-  sent: Message[],
-  conversationId: string,
-): Message[] {
-  const loadedIds = new Set(loaded.map((message) => message.id))
-  const oldest = loaded.length >= MESSAGE_PAGE_SIZE ? loaded[0] : undefined
-  const extra = sent.filter(
-    (message) =>
-      message.conversationId === conversationId &&
-      !loadedIds.has(message.id) &&
-      (!oldest || compareMessages(message, oldest) > 0),
-  )
-  if (extra.length === 0) return loaded
-  return [...loaded, ...extra].sort(compareMessages)
 }

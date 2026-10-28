@@ -1,9 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { findUser, formatTime, getConversationTitle } from '../../features/chat/helpers'
+import { MESSAGE_PAGE_SIZE } from '../../features/chat/api'
+import {
+  findUser,
+  formatTime,
+  getConversationTitle,
+  withLiveMessages,
+} from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
-import { withSentMessages, type PendingMessage } from '../../features/chat/useOutgoingMessages'
+import type { PendingMessage } from '../../features/chat/useOutgoingMessages'
 import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
 import { Composer } from '../Composer'
@@ -13,8 +19,8 @@ interface ChatPanelProps {
   conversation: Conversation | null
   // Messages of `conversation`, oldest first.
   messages: ChatQueryState<Message[]>
-  // Messages written in this session, of every conversation.
-  sent: Message[]
+  // Messages sent or received since the chat screen opened, of every conversation.
+  live: Message[]
   pending: PendingMessage[]
   users: User[]
   currentUserId: string
@@ -26,13 +32,15 @@ interface ChatPanelProps {
 
 const BUBBLE_CLASS = 'max-w-[75%] rounded-2xl px-3 py-2'
 const MINE_CLASS = 'rounded-br-sm bg-brand-100'
+// Within this distance (px) of the bottom, new messages keep the list scrolled down.
+const STICK_DISTANCE = 80
 const SMALL_BUTTON_CLASS =
   'rounded px-1 font-medium underline hover:text-red-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500'
 
 export function ChatPanel({
   conversation,
   messages,
-  sent,
+  live,
   pending,
   users,
   currentUserId,
@@ -44,20 +52,34 @@ export function ChatPanel({
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
   const listRef = useRef<HTMLDivElement>(null)
+  // Whether the list is at (or near) the bottom, so new messages should keep it there.
+  const stickRef = useRef(true)
   const loaded = messages.status === 'ready' ? messages.data : null
+  const isLoaded = loaded !== null
   const conversationId = conversation?.id ?? null
-  const shown = conversationId ? withSentMessages(loaded ?? [], sent, conversationId) : []
-  const pendingHere = pending.filter((message) => message.conversationId === conversationId)
+  const shown = conversationId
+    ? withLiveMessages(loaded ?? [], live, conversationId, MESSAGE_PAGE_SIZE)
+    : []
+  // Realtime can deliver the user's own message before the send request returns.
+  const shownIds = new Set(shown.map((message) => message.id))
+  const pendingHere = pending.filter(
+    (message) => message.conversationId === conversationId && !shownIds.has(message.id),
+  )
   const shownCount = shown.length + pendingHere.length
   // Changes when a pending message fails or is retried, which changes its height.
   const pendingStatuses = pendingHere.map((message) => message.status).join()
 
-  // Jump to the newest message when messages load, when one is added and when a pending
-  // one changes status.
+  // Opening a conversation shows its newest messages.
+  useEffect(() => {
+    stickRef.current = true
+  }, [conversationId, isLoaded])
+
+  // Keeps the newest message in view as messages are added or change, unless the user
+  // has scrolled up to read older ones.
   useEffect(() => {
     const list = listRef.current
-    if (list) list.scrollTop = list.scrollHeight
-  }, [conversationId, loaded, shownCount, pendingStatuses])
+    if (list && stickRef.current) list.scrollTop = list.scrollHeight
+  }, [conversationId, isLoaded, shownCount, pendingStatuses])
 
   if (!conversation) {
     return (
@@ -94,7 +116,15 @@ export function ChatPanel({
         </div>
       </header>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={listRef}
+        onScroll={(event) => {
+          const list = event.currentTarget
+          stickRef.current =
+            list.scrollHeight - list.scrollTop - list.clientHeight <= STICK_DISTANCE
+        }}
+        className="flex-1 overflow-y-auto px-4 py-4"
+      >
         {messages.status === 'loading' && <LoadStatus status="loading" />}
         {messages.status === 'error' && (
           <LoadStatus status="error" error={messages.error} onRetry={messages.reload} />
@@ -164,7 +194,14 @@ export function ChatPanel({
         </ol>
       </div>
 
-      <Composer key={conversation.id} onSend={(content) => onSend(conversation.id, content)} />
+      <Composer
+        key={conversation.id}
+        onSend={(content) => {
+          // The user's own message always scrolls into view.
+          stickRef.current = true
+          onSend(conversation.id, content)
+        }}
+      />
     </div>
   )
 }

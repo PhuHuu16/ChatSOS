@@ -41,6 +41,28 @@ export function getLastMessage(messages: Message[], conversationId: string): Mes
   return getMessages(messages, conversationId).at(-1)
 }
 
+// `loaded` (oldest first) plus the `live` messages of this conversation it does not have
+// yet (sent or received since it loaded). When `loaded` is a full page it may not reach
+// back to older live messages; those are left out so no gap appears before the page.
+export function withLiveMessages(
+  loaded: Message[],
+  live: Message[],
+  conversationId: string,
+  pageSize: number,
+): Message[] {
+  const loadedIds = new Set(loaded.map((message) => message.id))
+  const oldest = loaded.length >= pageSize ? loaded[0] : undefined
+  const seen = new Set<string>()
+  const extra = live.filter((message) => {
+    if (message.conversationId !== conversationId || loadedIds.has(message.id)) return false
+    if (seen.has(message.id) || (oldest && compareMessages(message, oldest) <= 0)) return false
+    seen.add(message.id)
+    return true
+  })
+  if (extra.length === 0) return loaded
+  return [...loaded, ...extra].sort(compareMessages)
+}
+
 // Newest activity first, counting `messages` that are newer than a conversation's
 // lastActivityAt (e.g. sent since the list loaded). Equal activity keeps the given order.
 export function sortByActivity(conversations: Conversation[], messages: Message[]): Conversation[] {

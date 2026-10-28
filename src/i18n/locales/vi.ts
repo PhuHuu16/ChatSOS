@@ -14,6 +14,7 @@ export const vi = {
     send: 'Gửi',
     sending: 'Đang gửi…',
     discard: 'Xoá',
+    reconnecting: 'Mất kết nối, đang kết nối lại… Tin nhắn mới có thể chưa hiện.',
     loading: 'Đang tải…',
     retry: 'Thử lại',
     noConversations: 'Chưa có cuộc trò chuyện nào',

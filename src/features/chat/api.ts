@@ -49,6 +49,33 @@ function toMessage(row: MessageRow): Message {
   }
 }
 
+const MESSAGE_KINDS: ReadonlySet<string> = new Set<MessageRow['kind']>(['text', 'image', 'file'])
+
+function isMessageKind(kind: string): kind is MessageRow['kind'] {
+  return MESSAGE_KINDS.has(kind)
+}
+
+// The new row of a Realtime INSERT event on messages, or null when the event carries no
+// usable row (e.g. an error event, which has no record).
+export function parseMessageRow(value: unknown): Message | null {
+  if (typeof value !== 'object' || value === null) return null
+  const row = value as Record<string, unknown>
+  const { id, conversation_id, sender_id, kind, content, created_at } = row
+  if (
+    typeof id !== 'string' ||
+    typeof conversation_id !== 'string' ||
+    typeof sender_id !== 'string' ||
+    typeof kind !== 'string' ||
+    !isMessageKind(kind) ||
+    typeof content !== 'string' ||
+    typeof created_at !== 'string' ||
+    Number.isNaN(Date.parse(created_at))
+  ) {
+    return null
+  }
+  return toMessage({ id, conversation_id, sender_id, kind, content, created_at })
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = []
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))

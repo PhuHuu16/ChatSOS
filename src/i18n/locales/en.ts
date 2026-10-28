@@ -15,6 +15,7 @@ export const en: Translation = {
     send: 'Send',
     sending: 'Sending…',
     discard: 'Delete',
+    reconnecting: 'Connection lost, reconnecting… New messages may not show yet.',
     loading: 'Loading…',
     retry: 'Try again',
     noConversations: 'No chats yet',

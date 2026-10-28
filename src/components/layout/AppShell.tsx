@@ -1,9 +1,11 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../features/auth/useAuth'
 import { fetchConversationList, fetchMessages } from '../../features/chat/api'
 import { sortByActivity } from '../../features/chat/helpers'
 import { useChatQuery } from '../../features/chat/useChatQuery'
 import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
+import { useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
 import { ChatPanel } from './ChatPanel'
 import { Sidebar } from './Sidebar'
@@ -13,6 +15,7 @@ const CONVERSATION_LIST_KEY = 'conversations'
 const loadConversationList = () => fetchConversationList()
 
 export function AppShell() {
+  const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<NewChatMode | null>(null)
   const { session, signOut } = useAuth()
@@ -47,19 +50,53 @@ export function AppShell() {
   const list = useChatQuery(CONVERSATION_LIST_KEY, loadConversationList)
   const listData = list.status === 'ready' ? list.data : null
   const outgoing = useOutgoingMessages()
-  // Messages sent since the list loaded move their conversation up and become its last
-  // message without reloading the list.
+  const realtime = useRealtimeMessages(currentUserId, handleRealtimeLive)
+  // Messages sent or received since the list loaded. They move their conversation up and
+  // become its last message without reloading the list.
+  const live = useMemo(
+    () => [...outgoing.sent, ...realtime.received],
+    [outgoing.sent, realtime.received],
+  )
   const conversations = useMemo(
-    () => sortByActivity(listData?.conversations ?? [], outgoing.sent),
-    [listData, outgoing.sent],
+    () => sortByActivity(listData?.conversations ?? [], live),
+    [listData, live],
   )
-  const lastMessages = useMemo(
-    () => [...(listData?.lastMessages ?? []), ...outgoing.sent],
-    [listData, outgoing.sent],
-  )
+  const lastMessages = useMemo(() => [...(listData?.lastMessages ?? []), ...live], [listData, live])
   const users = listData?.users ?? []
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
   const messages = useChatQuery(selected?.id ?? null, fetchMessages)
+
+  // Messages sent while Realtime was not subscribed are never delivered, so what is shown
+  // is reloaded whenever the subscription (re)starts. Loaded data stays visible meanwhile.
+  function handleRealtimeLive() {
+    list.reload()
+    messages.reload()
+  }
+
+  // Conversations, group members and their profiles are not sent by Realtime. A message
+  // from a conversation or sender the list does not know (a chat someone just started
+  // with this user, a new group member) reloads the list, once per unknown id.
+  const reloadList = list.reload
+  const requestedRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (!listData) return
+    const knownConversations = new Set(listData.conversations.map((item) => item.id))
+    const knownUsers = new Set(listData.users.map((user) => user.id))
+    let reload = false
+    for (const message of realtime.received) {
+      const unknown = [
+        knownConversations.has(message.conversationId) ? null : `c:${message.conversationId}`,
+        knownUsers.has(message.senderId) ? null : `u:${message.senderId}`,
+      ]
+      for (const key of unknown) {
+        if (key && !requestedRef.current.has(key)) {
+          requestedRef.current.add(key)
+          reload = true
+        }
+      }
+    }
+    if (reload) reloadList()
+  }, [listData, realtime.received, reloadList])
 
   // The new chat opens as soon as the reloaded list contains it.
   function handleCreated(conversationId: string) {
@@ -70,39 +107,46 @@ export function AppShell() {
 
   // On small screens only one column is visible: the list, or the open chat.
   return (
-    <div className="flex h-full">
-      <div
-        className={`${selected ? 'hidden md:flex' : 'flex'} w-full border-r border-slate-200 md:w-80 md:shrink-0`}
-      >
-        <Sidebar
-          list={list}
-          conversations={conversations}
-          lastMessages={lastMessages}
-          users={users}
-          currentUserId={currentUserId}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onNewChat={() => setDialog('direct')}
-          onNewGroup={() => setDialog('group')}
-          onSignOut={() => void handleSignOut()}
-          signingOut={signingOut}
-          signOutFailed={signOutFailed}
-        />
+    <div className="flex h-full flex-col">
+      {realtime.status === 'interrupted' && (
+        <p role="status" className="bg-amber-100 px-4 py-1 text-center text-sm text-amber-900">
+          {t('chat.reconnecting')}
+        </p>
+      )}
+      <div className="flex min-h-0 flex-1">
+        <div
+          className={`${selected ? 'hidden md:flex' : 'flex'} w-full border-r border-slate-200 md:w-80 md:shrink-0`}
+        >
+          <Sidebar
+            list={list}
+            conversations={conversations}
+            lastMessages={lastMessages}
+            users={users}
+            currentUserId={currentUserId}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onNewChat={() => setDialog('direct')}
+            onNewGroup={() => setDialog('group')}
+            onSignOut={() => void handleSignOut()}
+            signingOut={signingOut}
+            signOutFailed={signOutFailed}
+          />
+        </div>
+        <main className={`${selected ? 'flex' : 'hidden md:flex'} min-w-0 flex-1`}>
+          <ChatPanel
+            conversation={selected}
+            messages={messages}
+            live={live}
+            pending={outgoing.pending}
+            users={users}
+            currentUserId={currentUserId}
+            onBack={() => setSelectedId(null)}
+            onSend={outgoing.send}
+            onRetry={outgoing.retry}
+            onDiscard={outgoing.discard}
+          />
+        </main>
       </div>
-      <main className={`${selected ? 'flex' : 'hidden md:flex'} min-w-0 flex-1`}>
-        <ChatPanel
-          conversation={selected}
-          messages={messages}
-          sent={outgoing.sent}
-          pending={outgoing.pending}
-          users={users}
-          currentUserId={currentUserId}
-          onBack={() => setSelectedId(null)}
-          onSend={outgoing.send}
-          onRetry={outgoing.retry}
-          onDiscard={outgoing.discard}
-        />
-      </main>
       {dialog && (
         <NewChatDialog
           mode={dialog}
