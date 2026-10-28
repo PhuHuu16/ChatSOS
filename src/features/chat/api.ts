@@ -17,6 +17,8 @@ type MessageRow = Pick<
   | 'attachment_size'
   | 'attachment_mime'
   | 'created_at'
+  | 'edited_at'
+  | 'deleted_at'
 >
 
 // Same limit as the messages_content_length check (char_length counts code points).
@@ -28,7 +30,7 @@ export const UNREAD_LIMIT = 100
 const PROFILE_BATCH_SIZE = 100
 
 const MESSAGE_COLUMNS =
-  'id, conversation_id, sender_id, kind, content, attachment_path, attachment_name, attachment_size, attachment_mime, created_at'
+  'id, conversation_id, sender_id, kind, content, attachment_path, attachment_name, attachment_size, attachment_mime, created_at, edited_at, deleted_at'
 
 export type ChatResult<T> = { ok: true; data: T } | { ok: false; error: ChatErrorKey }
 
@@ -69,6 +71,8 @@ function toMessage(row: MessageRow): Message {
     content: row.content,
     attachment: row.kind === 'text' ? null : toAttachment(row),
     createdAt: row.created_at,
+    editedAt: row.edited_at,
+    deletedAt: row.deleted_at,
   }
 }
 
@@ -78,8 +82,8 @@ function isMessageKind(kind: string): kind is MessageRow['kind'] {
   return MESSAGE_KINDS.has(kind)
 }
 
-// The new row of a Realtime INSERT event on messages, or null when the event carries no
-// usable row (e.g. an error event, which has no record).
+// The new row of a Realtime INSERT or UPDATE event on messages, or null when the event
+// carries no usable row (e.g. an error event, which has no record).
 export function parseMessageRow(value: unknown): Message | null {
   if (typeof value !== 'object' || value === null) return null
   const row = value as Record<string, unknown>
@@ -97,6 +101,8 @@ export function parseMessageRow(value: unknown): Message | null {
     return null
   }
   const text = (value: unknown) => (typeof value === 'string' ? value : null)
+  const time = (value: unknown) =>
+    typeof value === 'string' && !Number.isNaN(Date.parse(value)) ? value : null
   // bigint may arrive as a number or a numeric string.
   const size = Number(row.attachment_size)
   const message = toMessage({
@@ -110,9 +116,12 @@ export function parseMessageRow(value: unknown): Message | null {
     attachment_size: row.attachment_size == null || !Number.isFinite(size) ? null : size,
     attachment_mime: text(row.attachment_mime),
     created_at,
+    edited_at: time(row.edited_at),
+    deleted_at: time(row.deleted_at),
   })
-  // An image or file message without its attachment cannot be shown.
-  return kind !== 'text' && message.attachment === null ? null : message
+  // An image or file message without its attachment cannot be shown, unless recalled.
+  if (kind !== 'text' && message.attachment === null && message.deletedAt === null) return null
+  return message
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -459,4 +468,37 @@ export async function createGroupChat(
   })
   if (response.error) return fail(response, 'create')
   return { ok: true, data: response.data }
+}
+
+// How long after sending the sender may edit or recall a message. The database enforces
+// it with its own clock; the app only uses it to hide the actions.
+export const MESSAGE_CHANGE_WINDOW_MS = 2 * 60 * 1000
+
+// RLS hides rows the caller may not change, so an update that matches none returns no row.
+async function changeMessage(
+  id: string,
+  change: Database['public']['Tables']['messages']['Update'],
+): Promise<ChatResult<Message>> {
+  const response = await supabase
+    .from('messages')
+    .update(change)
+    .eq('id', id)
+    .select(MESSAGE_COLUMNS)
+    .maybeSingle()
+  if (response.error) return fail(response, 'change')
+  if (!response.data) return { ok: false, error: 'chat.errors.notAllowed' }
+  return { ok: true, data: toMessage(response.data) }
+}
+
+// Replaces the text of the caller's own text message. The database records when.
+export async function editMessage(id: string, text: string): Promise<ChatResult<Message>> {
+  const checked = checkTextMessage(text)
+  if (!checked.ok) return checked
+  return changeMessage(id, { content: checked.content })
+}
+
+// Recalls the caller's own message for everyone. The database uses its own time and
+// clears the content and attachment. Recalling again changes nothing.
+export async function recallMessage(id: string): Promise<ChatResult<Message>> {
+  return changeMessage(id, { deleted_at: new Date().toISOString() })
 }

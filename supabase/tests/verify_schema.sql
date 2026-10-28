@@ -1,4 +1,5 @@
--- ChatSOS · Phase 1 · read-only verification. Run after all 5 migrations.
+-- ChatSOS · read-only verification. Run after all 6 migrations (the 5 of Phase 1 and
+-- 20261028000100_edit_recall_messages.sql).
 -- A single SELECT: it changes nothing. Failing checks are listed first, and the
 -- "== ALL CHECKS PASSED ==" row is true only when every check passed.
 --
@@ -35,7 +36,9 @@ allowed_privileges (role_name, table_name, privilege, column_name) as (
     ('authenticated', 'messages', 'INSERT', 'attachment_path'),
     ('authenticated', 'messages', 'INSERT', 'attachment_name'),
     ('authenticated', 'messages', 'INSERT', 'attachment_size'),
-    ('authenticated', 'messages', 'INSERT', 'attachment_mime')
+    ('authenticated', 'messages', 'INSERT', 'attachment_mime'),
+    ('authenticated', 'messages', 'UPDATE', 'content'),
+    ('authenticated', 'messages', 'UPDATE', 'deleted_at')
 ),
 -- Every table-level privilege, for every role and table.
 table_privilege_matrix as (
@@ -94,7 +97,9 @@ expected_functions (signature, authenticated_can_execute) as (
     ('private.is_member(uuid)', true),
     ('private.can_access_attachment(text)', true),
     ('private.validate_message_attachment()', false),
-    ('private.touch_conversation()', false)
+    ('private.touch_conversation()', false),
+    ('private.guard_message_update()', false),
+    ('private.attachment_unused(text)', true)
 ),
 functions as (
   select e.signature, e.authenticated_can_execute, p.oid, p.prosecdef, p.proconfig, p.proacl
@@ -131,12 +136,18 @@ expected_policies (schema_name, table_name, policy_name, command, expected_using
     ('public', 'messages', 'messages: members send as themselves', 'INSERT',
       null::text,
       '((sender_id = ( SELECT auth.uid() AS uid)) AND private.is_member(conversation_id))'),
+    ('public', 'messages', 'messages: senders change their own', 'UPDATE',
+      '((sender_id = ( SELECT auth.uid() AS uid)) AND private.is_member(conversation_id))',
+      '((sender_id = ( SELECT auth.uid() AS uid)) AND private.is_member(conversation_id))'),
     ('storage', 'objects', 'attachments: members can read', 'SELECT',
       '((bucket_id = ''attachments''::text) AND private.can_access_attachment(name))',
       null::text),
     ('storage', 'objects', 'attachments: members can upload new files', 'INSERT',
       null::text,
-      '((bucket_id = ''attachments''::text) AND (name ~ ''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|jpeg|png|webp|gif|pdf|txt|zip|docx|xlsx|pptx)$''::text) AND private.can_access_attachment(name))')
+      '((bucket_id = ''attachments''::text) AND (name ~ ''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|jpeg|png|webp|gif|pdf|txt|zip|docx|xlsx|pptx)$''::text) AND private.can_access_attachment(name))'),
+    ('storage', 'objects', 'attachments: uploaders delete unused files', 'DELETE',
+      '((bucket_id = ''attachments''::text) AND (owner_id = (( SELECT auth.uid() AS uid))::text) AND private.attachment_unused(name))',
+      null::text)
 ),
 expected_constraints (table_name, constraint_name) as (
   values
@@ -154,7 +165,8 @@ expected_constraints (table_name, constraint_name) as (
     ('messages', 'messages_attachment_name_valid'),
     ('messages', 'messages_attachment_size_valid'),
     ('messages', 'messages_attachment_type_valid'),
-    ('messages', 'messages_image_is_image')
+    ('messages', 'messages_image_is_image'),
+    ('messages', 'messages_edited_text_only')
 ),
 expected_mime_types (mime) as (
   select unnest(array[
@@ -297,7 +309,7 @@ checks (name, ok, detail) as (
       select count(*)
       from pg_catalog.pg_proc p
       where p.pronamespace = 'private'::regnamespace
-    ) = 4,
+    ) = 6,
     (
       select 'found: ' || coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.proname), 'none')
       from pg_catalog.pg_proc p
@@ -378,13 +390,13 @@ checks (name, ok, detail) as (
   from expected_policies e
   union all
   select
-    'exactly 7 policies on ChatSOS tables',
+    'exactly 8 policies on ChatSOS tables',
     (
       select count(*)
       from pg_catalog.pg_policies p
       where p.schemaname = 'public'
         and p.tablename in (select table_name from target_tables)
-    ) = 7,
+    ) = 8,
     (
       select 'count: ' || count(*)
       from pg_catalog.pg_policies p
@@ -394,14 +406,14 @@ checks (name, ok, detail) as (
   union all
   -- Every policy on storage.objects, whatever bucket or expression it uses: a policy
   -- applies to all buckets unless it filters bucket_id itself, so any extra one
-  -- (e.g. "using (true)") could expose attachments. Only the 2 expected may exist.
+  -- (e.g. "using (true)") could expose attachments. Only the 3 expected may exist.
   select
-    'exactly 2 policies on storage.objects (all buckets), both expected',
+    'exactly 3 policies on storage.objects (all buckets), all expected',
     (
       select count(*)
       from pg_catalog.pg_policies p
       where p.schemaname = 'storage' and p.tablename = 'objects'
-    ) = 2
+    ) = 3
     and not exists (
       select 1
       from pg_catalog.pg_policies p
@@ -479,7 +491,8 @@ checks (name, ok, detail) as (
     values
       ('on_auth_user_created', 'auth.users'),
       ('messages_validate_attachment', 'public.messages'),
-      ('messages_touch_conversation', 'public.messages')
+      ('messages_touch_conversation', 'public.messages'),
+      ('messages_guard_update', 'public.messages')
   ) as t (trigger_name, table_name)
 
   union all

@@ -109,6 +109,42 @@ export function countUnread(
   return new Map([...idsByConversation].map(([id, ids]) => [id, ids.size]))
 }
 
+// The newer of two copies of the same message. Changes only move forward: a recall is
+// final, and every edit has a later edited_at.
+export function newerVersion(a: Message, b: Message): Message {
+  if (a.deletedAt !== null || b.deletedAt !== null) return a.deletedAt !== null ? a : b
+  const editedA = a.editedAt === null ? -Infinity : timestampMicros(a.editedAt)
+  const editedB = b.editedAt === null ? -Infinity : timestampMicros(b.editedAt)
+  return editedB > editedA ? b : a
+}
+
+// `updates` with `message` added, keeping the newer copy of each message.
+export function withUpdate(
+  updates: ReadonlyMap<string, Message>,
+  message: Message,
+): ReadonlyMap<string, Message> {
+  const known = updates.get(message.id)
+  const next = known ? newerVersion(known, message) : message
+  return next === known ? updates : new Map(updates).set(message.id, next)
+}
+
+// `messages` with each one replaced by its newer copy in `updates`, if there is one.
+// Returns the same array when nothing changed.
+export function withUpdates(
+  messages: Message[],
+  updates: ReadonlyMap<string, Message>,
+): Message[] {
+  if (updates.size === 0) return messages
+  let changed = false
+  const result = messages.map((message) => {
+    const update = updates.get(message.id)
+    const newer = update ? newerVersion(message, update) : message
+    if (newer !== message) changed = true
+    return newer
+  })
+  return changed ? result : messages
+}
+
 // Every message of the given lists once, oldest first.
 export function mergeMessages(...lists: Message[][]): Message[] {
   const byId = new Map<string, Message>()

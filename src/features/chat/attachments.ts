@@ -191,6 +191,20 @@ export function setLocalAttachmentUrl(path: string, file: Blob) {
   if (!localUrls.has(path)) localUrls.set(path, URL.createObjectURL(file))
 }
 
+// Removes a file the caller uploaded that no message uses any more: its message was
+// recalled, or it was never sent. Storage refuses files still in use. Failures are
+// ignored; the file then just stays in the bucket.
+export async function removeAttachment(path: string): Promise<void> {
+  const local = localUrls.get(path)
+  if (local) URL.revokeObjectURL(local)
+  localUrls.delete(path)
+  signedUrls.delete(path)
+  await supabase.storage
+    .from(BUCKET)
+    .remove([path])
+    .catch(() => undefined)
+}
+
 // Forgets every URL, e.g. on sign-out: signed URLs work for anyone who has them.
 export function clearAttachmentUrls() {
   for (const url of localUrls.values()) URL.revokeObjectURL(url)

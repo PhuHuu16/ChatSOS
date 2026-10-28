@@ -13,6 +13,8 @@ realtime dùng [Supabase](https://supabase.com). Giao diện tiếng Việt và 
 - Gửi ảnh (JPG, PNG, WebP, GIF) và tệp (PDF, TXT, ZIP, DOCX, XLSX, PPTX), tối đa
   20 MB: bằng nút 📎, dán (Ctrl+V) hoặc kéo thả. Ảnh xem ngay trong chat, tệp tải về
   giữ đúng tên gốc.
+- Sửa tin văn bản và thu hồi tin (cả ảnh/tệp) trong 2 phút sau khi gửi; người kia thấy
+  ngay. Tin thu hồi bị xoá nội dung trên server, ảnh/tệp bị xoá khỏi Storage.
 - Nhận tin mới tức thì (Supabase Realtime); mất kết nối thì báo và tự đồng bộ lại.
 - Đếm tin chưa đọc; mở chat thì nhảy tới tin chưa đọc đầu tiên.
 - Xem 50 tin mới nhất, cuộn lên đầu để tải thêm tin cũ.
@@ -35,14 +37,15 @@ React 19, TypeScript, Vite, Tailwind CSS v4, i18next, supabase-js
 
 ### 1. Database Supabase
 
-Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 5 file trong
-`supabase/migrations/`, theo đúng thứ tự tên file:
+Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 6 file trong
+`supabase/migrations/`, mỗi lần một file, theo đúng thứ tự tên file:
 
 1. `20261016000100_profiles.sql`: hồ sơ người dùng.
 2. `20261016000200_conversations.sql`: cuộc trò chuyện, thành viên, tin nhắn và RLS.
 3. `20261016000300_rpc.sql`: hàm tạo chat riêng và nhóm.
 4. `20261016000400_message_triggers.sql`: kiểm tra tin nhắn và tệp đính kèm.
 5. `20261016000500_storage_realtime.sql`: bucket `attachments` (riêng tư) và Realtime.
+6. `20261028000100_edit_recall_messages.sql`: sửa và thu hồi tin (giới hạn 2 phút).
 
 Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì. Sau đó chạy
 `supabase/tests/verify_schema.sql` (chỉ đọc); dòng `== ALL CHECKS PASSED ==` phải
@@ -121,5 +124,4 @@ supabase/
 - Chat mới chưa có tin nhắn chỉ hiện với người được mời sau khi tải lại trang hoặc
   khi có tin đầu tiên.
 - Ảnh hiển thị bằng tệp gốc, chưa có ảnh thu nhỏ.
-- Bấm "Xoá" một tin gửi lỗi mà tệp đã kịp tải lên thì tệp đó vẫn nằm trong Storage.
-- Chưa sửa, xoá hay thu hồi được tin đã gửi.
+- Quá 2 phút thì không sửa hay thu hồi được tin nữa (có chủ đích).

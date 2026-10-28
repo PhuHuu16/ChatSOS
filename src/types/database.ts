@@ -67,6 +67,8 @@ export type Database = {
           attachment_size: number | null
           attachment_mime: string | null
           created_at: string
+          edited_at: string | null
+          deleted_at: string | null
         }
         // sender_id and created_at are not granted: they always take their defaults.
         Insert: {
@@ -79,7 +81,11 @@ export type Database = {
           attachment_size?: number | null
           attachment_mime?: string | null
         }
-        Update: never
+        // Only these are granted; the messages_guard_update trigger sets the rest.
+        Update: {
+          content?: string
+          deleted_at?: string | null
+        }
         Relationships: []
       }
     }

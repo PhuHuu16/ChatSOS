@@ -46,10 +46,14 @@ export interface Message {
   conversationId: string
   senderId: string
   kind: MessageKind
-  // Empty for image and file messages.
+  // Empty for image and file messages, and once recalled.
   content: string
-  // Set exactly for image and file messages.
+  // Set exactly for image and file messages that were not recalled.
   attachment: Attachment | null
   // ISO 8601
   createdAt: string
+  // ISO 8601, when the text was last edited; null if never.
+  editedAt: string | null
+  // ISO 8601, when the sender recalled the message; null if not recalled.
+  deletedAt: string | null
 }

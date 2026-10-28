@@ -1,6 +1,11 @@
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchMessagesBefore, MESSAGE_PAGE_SIZE, type ChatResult } from '../../features/chat/api'
+import {
+  fetchMessagesBefore,
+  MESSAGE_CHANGE_WINDOW_MS,
+  MESSAGE_PAGE_SIZE,
+  type ChatResult,
+} from '../../features/chat/api'
 import type { ChatErrorKey } from '../../features/chat/chatErrors'
 import {
   findUser,
@@ -8,6 +13,7 @@ import {
   mergeMessages,
   timestampMicros,
   withLiveMessages,
+  withUpdates,
 } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
@@ -29,8 +35,16 @@ interface MessageListProps {
   unreadCount: number
   // The user's read marker for this conversation (ISO 8601), or null when none is read.
   readMarker: string | null
+  // The newest copy of each message edited or recalled since the chat screen opened.
+  updates: ReadonlyMap<string, Message>
+  // The message being edited in the composer, and the one waiting for the server to
+  // save an edit or a recall.
+  editingId: string | null
+  changingId: string | null
+  onStartEdit: (message: Message) => void
+  onRecall: (message: Message) => void
   onRetry: (message: PendingMessage) => void
-  onDiscard: (id: string) => void
+  onDiscard: (message: PendingMessage) => void
   // The user has seen the conversation up to the message created at `readAt`.
   onRead: (conversationId: string, readAt: string) => void
 }
@@ -55,6 +69,10 @@ const LOAD_OLDER_DISTANCE = 200
 const MAX_JUMP_PAGES = 3
 // Space (px) left above the first unread message for the divider.
 const JUMP_MARGIN = 48
+// How often (ms) the edit and recall actions are checked against their time limit.
+const CHANGE_WINDOW_TICK = 5000
+const ACTION_BUTTON_CLASS =
+  'rounded-full px-2 py-0.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500'
 
 // The messages of one conversation. Render with `key` = conversation id: everything here
 // (older pages, scroll position, the unread divider) belongs to that conversation.
@@ -67,6 +85,11 @@ export function MessageList({
   currentUserId,
   unreadCount,
   readMarker,
+  updates,
+  editingId,
+  changingId,
+  onStartEdit,
+  onRecall,
   onRetry,
   onDiscard,
   onRead,
@@ -95,10 +118,21 @@ export function MessageList({
   // The scroll position to keep when older messages are added above.
   const anchorRef = useRef<{ height: number; top: number } | null>(null)
 
+  // Own messages can be changed for a short time after sending; the actions disappear
+  // once it has passed (the database refuses later changes anyway).
+  const [now, setNow] = useState(() => Date.now())
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), CHANGE_WINDOW_TICK)
+    return () => clearInterval(timer)
+  }, [])
+
   const latestData = latest.status === 'ready' ? latest.data : null
   const loaded = latestData ? mergeMessages(older.messages, latestData) : null
   const hasMore = older.hasMore ?? (latestData ? latestData.length >= MESSAGE_PAGE_SIZE : false)
-  const shown = loaded ? withLiveMessages(loaded, live, conversation.id, !hasMore) : []
+  const shown = loaded
+    ? withUpdates(withLiveMessages(loaded, live, conversation.id, !hasMore), updates)
+    : []
   // Realtime can deliver the user's own message before the send request returns.
   const shownIds = new Set(shown.map((message) => message.id))
   const pendingHere = pending.filter(
@@ -289,6 +323,16 @@ export function MessageList({
             const isMine = message.senderId === currentUserId
             const senderName =
               isGroup && !isMine ? findUser(users, message.senderId)?.displayName : undefined
+            const recalled = message.deletedAt !== null
+            const canChange =
+              isMine && !recalled && now - Date.parse(message.createdAt) < MESSAGE_CHANGE_WINDOW_MS
+            const menuOpen = canChange && menuFor === message.id
+            const highlight =
+              message.id === editingId
+                ? 'ring-2 ring-brand-500'
+                : message.id === changingId
+                  ? 'opacity-60'
+                  : ''
 
             return (
               <Fragment key={message.id}>
@@ -303,30 +347,80 @@ export function MessageList({
                 )}
                 <li
                   data-message-id={message.id}
-                  className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+                  className={`group flex items-center gap-1 ${isMine ? 'justify-end' : 'justify-start'}`}
                 >
+                  {canChange && (
+                    <div className="flex shrink-0 items-center gap-1 text-xs">
+                      {menuOpen && (
+                        <>
+                          {message.kind === 'text' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuFor(null)
+                                onStartEdit(message)
+                              }}
+                              className={ACTION_BUTTON_CLASS}
+                            >
+                              {t('chat.edit')}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuFor(null)
+                              onRecall(message)
+                            }}
+                            className={ACTION_BUTTON_CLASS}
+                          >
+                            {t('chat.recall')}
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        aria-label={t('chat.messageActions')}
+                        aria-expanded={menuOpen}
+                        disabled={message.id === changingId}
+                        onClick={() => setMenuFor(menuOpen ? null : message.id)}
+                        className={`${ACTION_BUTTON_CLASS} text-base leading-none ${
+                          menuOpen
+                            ? ''
+                            : 'md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
+                        }`}
+                      >
+                        <span aria-hidden="true">⋯</span>
+                      </button>
+                    </div>
+                  )}
                   <div
-                    className={`${BUBBLE_CLASS} ${isMine ? MINE_CLASS : 'rounded-bl-sm bg-slate-100'}`}
+                    className={`${BUBBLE_CLASS} ${isMine ? MINE_CLASS : 'rounded-bl-sm bg-slate-100'} ${highlight}`}
                   >
                     {senderName && (
                       <p className="mb-0.5 text-xs font-semibold text-brand-700">{senderName}</p>
                     )}
-                    {message.attachment && message.kind !== 'text' && (
-                      <AttachmentView
-                        kind={message.kind}
-                        attachment={message.attachment}
-                        onLoad={keepBottom}
-                      />
+                    {recalled ? (
+                      <p className="text-slate-500 italic">{t('chat.recalled')}</p>
+                    ) : (
+                      <>
+                        {message.attachment && message.kind !== 'text' && (
+                          <AttachmentView
+                            kind={message.kind}
+                            attachment={message.attachment}
+                            onLoad={keepBottom}
+                          />
+                        )}
+                        {message.content && (
+                          <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+                        )}
+                      </>
                     )}
-                    {message.content && (
-                      <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
-                    )}
-                    <time
-                      dateTime={message.createdAt}
-                      className="mt-0.5 block text-right text-xs text-slate-500"
-                    >
-                      {formatTime(message.createdAt, language)}
-                    </time>
+                    <p className="mt-0.5 text-right text-xs text-slate-500">
+                      {message.editedAt && !recalled && <span>{t('chat.edited')} · </span>}
+                      <time dateTime={message.createdAt}>
+                        {formatTime(message.createdAt, language)}
+                      </time>
+                    </p>
                   </div>
                 </li>
               </Fragment>
@@ -372,7 +466,7 @@ export function MessageList({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDiscard(message.id)}
+                        onClick={() => onDiscard(message)}
                         className={SMALL_BUTTON_CLASS}
                       >
                         {t('chat.discard')}

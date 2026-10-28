@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { sendTextMessage, type ChatResult } from './api'
 import {
   newAttachmentPath,
+  removeAttachment,
   sendAttachment,
   setLocalAttachmentUrl,
   type CheckedFile,
@@ -37,7 +38,7 @@ export interface OutgoingMessages {
   send: (conversationId: string, content: string) => void
   sendFile: (conversationId: string, file: Blob, checked: CheckedFile) => void
   retry: (message: PendingMessage) => void
-  discard: (id: string) => void
+  discard: (message: PendingMessage) => void
 }
 
 // Messages written in this session. Each one shows at once as pending and moves to `sent`
@@ -116,8 +117,12 @@ export function useOutgoingMessages(): OutgoingMessages {
     [deliver],
   )
 
-  const discard = useCallback((id: string) => {
-    setPending((list) => list.filter((item) => item.id !== id || item.status !== 'failed'))
+  // A file an attempt already uploaded is removed too. If the message did reach the server
+  // (only its reply was lost), Storage keeps the file because the message uses it.
+  const discard = useCallback((message: PendingMessage) => {
+    if (message.status !== 'failed') return
+    setPending((list) => list.filter((item) => item.id !== message.id))
+    if (message.upload) void removeAttachment(message.upload.path)
   }, [])
 
   return { pending, sent, send, sendFile, retry, discard }

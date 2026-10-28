@@ -2,18 +2,25 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../features/auth/useAuth'
 import {
+  editMessage,
   fetchConversationList,
   fetchMessages,
   markConversationRead,
+  recallMessage,
+  type ChatResult,
 } from '../../features/chat/api'
+import type { ChatErrorKey } from '../../features/chat/chatErrors'
 import {
   countUnread,
   laterReadMarker,
   sortByActivity,
   timestampMicros,
+  withUpdate,
+  withUpdates,
 } from '../../features/chat/helpers'
+import type { Message } from '../../features/chat/types'
 import { useChatQuery } from '../../features/chat/useChatQuery'
-import { clearAttachmentUrls } from '../../features/chat/attachments'
+import { clearAttachmentUrls, removeAttachment } from '../../features/chat/attachments'
 import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
 import { useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
@@ -67,7 +74,17 @@ export function AppShell() {
     () => sortByActivity(listData?.conversations ?? [], live),
     [listData, live],
   )
-  const lastMessages = useMemo(() => [...(listData?.lastMessages ?? []), ...live], [listData, live])
+  // Edits and recalls made here, and the ones Realtime reported; the newer copy wins.
+  const [ownChanges, setOwnChanges] = useState<ReadonlyMap<string, Message>>(new Map())
+  const updates = useMemo(() => {
+    let merged = realtime.updated
+    for (const message of ownChanges.values()) merged = withUpdate(merged, message)
+    return merged
+  }, [realtime.updated, ownChanges])
+  const lastMessages = useMemo(
+    () => withUpdates([...(listData?.lastMessages ?? []), ...live], updates),
+    [listData, live, updates],
+  )
   const users = listData?.users ?? []
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
   const messages = useChatQuery(selected?.id ?? null, fetchMessages)
@@ -93,6 +110,26 @@ export function AppShell() {
     setReadMarkers((markers) => new Map(markers).set(conversationId, readAt))
     // A failure only means the badge may come back after a reload; nothing to show.
     void markConversationRead(conversationId, currentUserId, readAt)
+  }
+
+  async function changeMessage(request: Promise<ChatResult<Message>>): Promise<ChatErrorKey | null> {
+    const result = await request.catch(
+      (): ChatResult<Message> => ({ ok: false, error: 'chat.errors.changeFailed' }),
+    )
+    if (!result.ok) return result.error
+    setOwnChanges((map) => withUpdate(map, result.data))
+    return null
+  }
+
+  function handleEdit(message: Message, content: string) {
+    return changeMessage(editMessage(message.id, content))
+  }
+
+  // A recalled image or file is removed from storage too; no message uses it any more.
+  async function handleRecall(message: Message) {
+    const error = await changeMessage(recallMessage(message.id))
+    if (!error && message.attachment) void removeAttachment(message.attachment.path)
+    return error
   }
 
   // Messages sent while Realtime was not subscribed are never delivered, so what is shown
@@ -196,6 +233,9 @@ export function AppShell() {
               selected ? laterReadMarker(selected.lastReadAt, readMarkers.get(selected.id)) : null
             }
             onRead={handleRead}
+            updates={updates}
+            onEdit={handleEdit}
+            onRecall={handleRecall}
           />
         </main>
       </div>

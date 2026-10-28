@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { parseMessageRow } from './api'
+import { withUpdate } from './helpers'
 import type { Message } from './types'
 
 // connecting: before the first successful subscription (shown as nothing special).
@@ -10,16 +11,19 @@ export type RealtimeStatus = 'connecting' | 'live' | 'interrupted'
 export interface RealtimeMessages {
   // New messages received since the chat screen opened, in arrival order.
   received: Message[]
+  // The newest copy of each message edited or recalled since the chat screen opened.
+  updated: ReadonlyMap<string, Message>
   status: RealtimeStatus
 }
 
-// Listens for new messages in every conversation the user belongs to. Realtime checks
+// Listens for new, edited and recalled messages in every conversation the user belongs to. Realtime checks
 // the messages RLS policy for each subscriber, so only members receive a message.
 // `onLive` runs each time the subscription becomes active, including after a
 // reconnect: messages sent while it was not active are never delivered, so the caller
 // reloads what it shows.
 export function useRealtimeMessages(userId: string, onLive: () => void): RealtimeMessages {
   const [received, setReceived] = useState<Message[]>([])
+  const [updated, setUpdated] = useState<ReadonlyMap<string, Message>>(new Map())
   const [status, setStatus] = useState<RealtimeStatus>('connecting')
   const handleLive = useEffectEvent(onLive)
 
@@ -40,6 +44,11 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
         if (!message) return
         setReceived((list) => (list.some((item) => item.id === message.id) ? list : [...list, message]))
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+        if (!active || payload.errors?.length) return
+        const message = parseMessageRow(payload.new)
+        if (message) setUpdated((map) => withUpdate(map, message))
+      })
       .subscribe((state) => {
         if (!active) return
         if (state === 'SUBSCRIBED') {
@@ -57,5 +66,5 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
     }
   }, [userId])
 
-  return { received, status }
+  return { received, updated, status }
 }
