@@ -12,6 +12,8 @@ import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import type { PendingMessage } from '../../features/chat/useOutgoingMessages'
 import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
+import type { CheckedFile } from '../../features/chat/attachments'
+import { AttachmentView } from '../AttachmentView'
 import { Composer } from '../Composer'
 import { LoadStatus } from '../LoadStatus'
 
@@ -26,6 +28,7 @@ interface ChatPanelProps {
   currentUserId: string
   onBack: () => void
   onSend: (conversationId: string, content: string) => void
+  onSendFile: (conversationId: string, file: Blob, checked: CheckedFile) => void
   onRetry: (message: PendingMessage) => void
   onDiscard: (id: string) => void
   // Unread messages in `conversation`.
@@ -50,6 +53,7 @@ export function ChatPanel({
   currentUserId,
   onBack,
   onSend,
+  onSendFile,
   onRetry,
   onDiscard,
   unreadCount,
@@ -87,6 +91,12 @@ export function ChatPanel({
     onRead(conversationId, newest.createdAt)
   }
   const markReadFromEffect = useEffectEvent(markReadIfSeen)
+
+  // An image that finishes loading grows its message; stay at the bottom if already there.
+  function keepBottom() {
+    const list = listRef.current
+    if (list && stickRef.current) list.scrollTop = list.scrollHeight
+  }
 
   // Opening a conversation shows its newest messages.
   useEffect(() => {
@@ -180,7 +190,16 @@ export function ChatPanel({
                     {senderName && (
                       <p className="mb-0.5 text-xs font-semibold text-brand-700">{senderName}</p>
                     )}
-                    <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+                    {message.attachment && message.kind !== 'text' && (
+                      <AttachmentView
+                        kind={message.kind}
+                        attachment={message.attachment}
+                        onLoad={keepBottom}
+                      />
+                    )}
+                    {message.content && (
+                      <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+                    )}
                     <time
                       dateTime={message.createdAt}
                       className="mt-0.5 block text-right text-xs text-slate-500"
@@ -198,10 +217,25 @@ export function ChatPanel({
                     message.status === 'failed' ? 'ring-1 ring-red-300' : 'opacity-70'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+                  {message.upload && (
+                    <AttachmentView
+                      kind={message.upload.checked.kind}
+                      attachment={{
+                        path: message.upload.path,
+                        name: message.upload.checked.name,
+                        size: message.upload.checked.size,
+                        mime: message.upload.checked.mime,
+                      }}
+                      pending
+                      onLoad={keepBottom}
+                    />
+                  )}
+                  {message.content && (
+                    <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+                  )}
                   {message.status === 'sending' ? (
                     <p role="status" className="mt-0.5 text-right text-xs text-slate-500">
-                      {t('chat.sending')}
+                      {t(message.upload ? 'chat.uploading' : 'chat.sending')}
                     </p>
                   ) : (
                     <div role="alert" className="mt-1 text-right text-xs text-red-700">
@@ -249,6 +283,10 @@ export function ChatPanel({
           // The user's own message always scrolls into view.
           stickRef.current = true
           onSend(conversation.id, content)
+        }}
+        onSendFile={(file, checked) => {
+          stickRef.current = true
+          onSendFile(conversation.id, file, checked)
         }}
       />
     </div>

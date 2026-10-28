@@ -137,7 +137,11 @@ export function Sidebar({
                       {last && (
                         <span className="min-w-0 truncate text-sm text-slate-500">
                           {prefix}
-                          {last.content}
+                          {last.kind === 'image'
+                            ? `📷 ${t('chat.photo')}`
+                            : last.kind === 'file'
+                              ? `📎 ${last.attachment?.name ?? ''}`
+                              : last.content}
                         </span>
                       )}
                       {unread > 0 && (

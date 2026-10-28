@@ -30,12 +30,26 @@ export interface UnreadMessage {
   createdAt: string
 }
 
+// A file stored in the private attachments bucket.
+export interface Attachment {
+  // "<conversation id>/<uuid>.<extension>" inside the bucket.
+  path: string
+  // The original file name, for display and downloads only.
+  name: string
+  // Bytes.
+  size: number
+  mime: string
+}
+
 export interface Message {
   id: string
   conversationId: string
   senderId: string
   kind: MessageKind
+  // Empty for image and file messages.
   content: string
+  // Set exactly for image and file messages.
+  attachment: Attachment | null
   // ISO 8601
   createdAt: string
 }

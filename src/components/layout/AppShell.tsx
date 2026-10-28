@@ -13,6 +13,7 @@ import {
   timestampMicros,
 } from '../../features/chat/helpers'
 import { useChatQuery } from '../../features/chat/useChatQuery'
+import { clearAttachmentUrls } from '../../features/chat/attachments'
 import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
 import { useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
@@ -101,6 +102,22 @@ export function AppShell() {
     messages.reload()
   }
 
+  // A file dropped on the page would make the browser open it and leave the app. The
+  // open chat's composer picks dropped files up itself.
+  useEffect(() => {
+    const keepFiles = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
+    }
+    document.addEventListener('dragover', keepFiles)
+    document.addEventListener('drop', keepFiles)
+    return () => {
+      document.removeEventListener('dragover', keepFiles)
+      document.removeEventListener('drop', keepFiles)
+      // Signed URLs work for anyone who has them; forget them when the user leaves.
+      clearAttachmentUrls()
+    }
+  }, [])
+
   // Conversations, group members and their profiles are not sent by Realtime. A message
   // from a conversation or sender the list does not know (a chat someone just started
   // with this user, a new group member) reloads the list, once per unknown id.
@@ -171,6 +188,7 @@ export function AppShell() {
             currentUserId={currentUserId}
             onBack={() => setSelectedId(null)}
             onSend={outgoing.send}
+            onSendFile={outgoing.sendFile}
             onRetry={outgoing.retry}
             onDiscard={outgoing.discard}
             unreadCount={selected ? (unreadCounts.get(selected.id) ?? 0) : 0}

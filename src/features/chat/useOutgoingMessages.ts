@@ -1,14 +1,28 @@
 import { useCallback, useState } from 'react'
 import { sendTextMessage, type ChatResult } from './api'
+import {
+  newAttachmentPath,
+  sendAttachment,
+  setLocalAttachmentUrl,
+  type CheckedFile,
+} from './attachments'
 import type { ChatErrorKey } from './chatErrors'
 import type { Message } from './types'
 
-// A text message the server has not confirmed yet.
+// A file being sent. The path is chosen once, so a retry reuses the uploaded file.
+export interface PendingUpload {
+  file: Blob
+  checked: CheckedFile
+  path: string
+}
+
+// A message the server has not confirmed yet.
 export interface PendingMessage {
   id: string
   conversationId: string
-  // Already checked with checkTextMessage.
+  // Text, already checked with checkTextMessage; empty for a file.
   content: string
+  upload: PendingUpload | null
   // Client clock; only used to show a time until the server confirms the message.
   createdAt: string
   status: 'sending' | 'failed'
@@ -21,6 +35,7 @@ export interface OutgoingMessages {
   // Confirmed by the server since the chat screen opened.
   sent: Message[]
   send: (conversationId: string, content: string) => void
+  sendFile: (conversationId: string, file: Blob, checked: CheckedFile) => void
   retry: (message: PendingMessage) => void
   discard: (id: string) => void
 }
@@ -32,7 +47,11 @@ export function useOutgoingMessages(): OutgoingMessages {
   const [sent, setSent] = useState<Message[]>([])
 
   const deliver = useCallback((message: PendingMessage) => {
-    void sendTextMessage(message.conversationId, message.content, message.id)
+    const { upload } = message
+    const request = upload
+      ? sendAttachment(message.conversationId, upload.file, upload.checked, upload.path, message.id)
+      : sendTextMessage(message.conversationId, message.content, message.id)
+    void request
       .catch((): ChatResult<Message> => ({ ok: false, error: 'chat.errors.sendFailed' }))
       .then((result) => {
         if (result.ok) {
@@ -51,12 +70,13 @@ export function useOutgoingMessages(): OutgoingMessages {
       })
   }, [])
 
-  const send = useCallback(
-    (conversationId: string, content: string) => {
+  const add = useCallback(
+    (conversationId: string, content: string, upload: PendingUpload | null) => {
       const message: PendingMessage = {
         id: crypto.randomUUID(),
         conversationId,
         content,
+        upload,
         createdAt: new Date().toISOString(),
         status: 'sending',
         error: null,
@@ -65,6 +85,21 @@ export function useOutgoingMessages(): OutgoingMessages {
       deliver(message)
     },
     [deliver],
+  )
+
+  const send = useCallback(
+    (conversationId: string, content: string) => add(conversationId, content, null),
+    [add],
+  )
+
+  const sendFile = useCallback(
+    (conversationId: string, file: Blob, checked: CheckedFile) => {
+      const path = newAttachmentPath(conversationId, checked.extension)
+      // The picked image shows at once, and stays in memory once sent.
+      if (checked.kind === 'image') setLocalAttachmentUrl(path, file)
+      add(conversationId, '', { file, checked, path })
+    },
+    [add],
   )
 
   // Same id as the first attempt, so a message that did reach the server is not stored twice.
@@ -85,5 +120,5 @@ export function useOutgoingMessages(): OutgoingMessages {
     setPending((list) => list.filter((item) => item.id !== id || item.status !== 'failed'))
   }, [])
 
-  return { pending, sent, send, retry, discard }
+  return { pending, sent, send, sendFile, retry, discard }
 }

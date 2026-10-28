@@ -3,11 +3,20 @@
 import { supabase } from '../../lib/supabase'
 import type { Database } from '../../types/database'
 import { toChatErrorKey, type ChatAction, type ChatErrorKey } from './chatErrors'
-import type { Conversation, Message, Profile, UnreadMessage, User } from './types'
+import type { Attachment, Conversation, Message, Profile, UnreadMessage, User } from './types'
 
 type MessageRow = Pick<
   Database['public']['Tables']['messages']['Row'],
-  'id' | 'conversation_id' | 'sender_id' | 'kind' | 'content' | 'created_at'
+  | 'id'
+  | 'conversation_id'
+  | 'sender_id'
+  | 'kind'
+  | 'content'
+  | 'attachment_path'
+  | 'attachment_name'
+  | 'attachment_size'
+  | 'attachment_mime'
+  | 'created_at'
 >
 
 // Same limit as the messages_content_length check (char_length counts code points).
@@ -18,7 +27,8 @@ export const UNREAD_LIMIT = 100
 // Keeps each `id=in.(...)` request URL well under server limits.
 const PROFILE_BATCH_SIZE = 100
 
-const MESSAGE_COLUMNS = 'id, conversation_id, sender_id, kind, content, created_at'
+const MESSAGE_COLUMNS =
+  'id, conversation_id, sender_id, kind, content, attachment_path, attachment_name, attachment_size, attachment_mime, created_at'
 
 export type ChatResult<T> = { ok: true; data: T } | { ok: false; error: ChatErrorKey }
 
@@ -42,6 +52,14 @@ function fail(response: FailedResponse, action: ChatAction): { ok: false; error:
   return { ok: false, error: toChatErrorKey(response.status, response.error?.code, action) }
 }
 
+function toAttachment(row: MessageRow): Attachment | null {
+  const { attachment_path: path, attachment_name: name, attachment_size: size } = row
+  const mime = row.attachment_mime
+  // The messages_kind_consistency check sets all four or none.
+  if (path === null || name === null || size === null || mime === null) return null
+  return { path, name, size, mime }
+}
+
 function toMessage(row: MessageRow): Message {
   return {
     id: row.id,
@@ -49,6 +67,7 @@ function toMessage(row: MessageRow): Message {
     senderId: row.sender_id,
     kind: row.kind,
     content: row.content,
+    attachment: row.kind === 'text' ? null : toAttachment(row),
     createdAt: row.created_at,
   }
 }
@@ -77,7 +96,23 @@ export function parseMessageRow(value: unknown): Message | null {
   ) {
     return null
   }
-  return toMessage({ id, conversation_id, sender_id, kind, content, created_at })
+  const text = (value: unknown) => (typeof value === 'string' ? value : null)
+  // bigint may arrive as a number or a numeric string.
+  const size = Number(row.attachment_size)
+  const message = toMessage({
+    id,
+    conversation_id,
+    sender_id,
+    kind,
+    content,
+    attachment_path: text(row.attachment_path),
+    attachment_name: text(row.attachment_name),
+    attachment_size: row.attachment_size == null || !Number.isFinite(size) ? null : size,
+    attachment_mime: text(row.attachment_mime),
+    created_at,
+  })
+  // An image or file message without its attachment cannot be shown.
+  return kind !== 'text' && message.attachment === null ? null : message
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -239,29 +274,65 @@ export async function sendTextMessage(
   if (!response.error) return { ok: true, data: toMessage(response.data) }
   // 23505: the id is already stored, e.g. a retry after the first reply was lost.
   if (response.error.code === '23505') {
-    return fetchStoredTextMessage(id, conversationId, checked.content)
+    return fetchStoredMessage(id, conversationId, { kind: 'text', content: checked.content })
   }
   return fail(response, 'send')
 }
 
+type StoredMessageMatch =
+  | { kind: 'text'; content: string }
+  | { kind: 'image' | 'file'; attachmentPath: string }
+
 // The stored copy of a message this client already sent. The id was generated here, so
-// a row with the same id, conversation and text is that message.
-async function fetchStoredTextMessage(
+// a row with the same id, conversation and content (or attachment) is that message.
+async function fetchStoredMessage(
   id: string,
   conversationId: string,
-  content: string,
+  match: StoredMessageMatch,
 ): Promise<ChatResult<Message>> {
-  const response = await supabase
+  const query = supabase
     .from('messages')
     .select(MESSAGE_COLUMNS)
     .eq('id', id)
     .eq('conversation_id', conversationId)
-    .eq('kind', 'text')
-    .eq('content', content)
-    .maybeSingle()
+    .eq('kind', match.kind)
+  const response = await (match.kind === 'text'
+    ? query.eq('content', match.content)
+    : query.eq('attachment_path', match.attachmentPath)
+  ).maybeSingle()
   if (response.error) return fail(response, 'send')
   if (!response.data) return { ok: false, error: 'chat.errors.sendFailed' }
   return { ok: true, data: toMessage(response.data) }
+}
+
+// Sends an image or file message for an attachment the caller has already uploaded. The
+// database checks that the file exists, was uploaded by the caller and matches the
+// declared type and size. Sending again with the same id never stores a second copy.
+export async function insertAttachmentMessage(
+  conversationId: string,
+  kind: 'image' | 'file',
+  attachment: Attachment,
+  id: string,
+): Promise<ChatResult<Message>> {
+  const response = await supabase
+    .from('messages')
+    .insert({
+      id,
+      conversation_id: conversationId,
+      kind,
+      content: '',
+      attachment_path: attachment.path,
+      attachment_name: attachment.name,
+      attachment_size: attachment.size,
+      attachment_mime: attachment.mime,
+    })
+    .select(MESSAGE_COLUMNS)
+    .single()
+  if (!response.error) return { ok: true, data: toMessage(response.data) }
+  if (response.error.code === '23505') {
+    return fetchStoredMessage(id, conversationId, { kind, attachmentPath: attachment.path })
+  }
+  return fail(response, 'send')
 }
 
 // Moves the user's read marker forward to `readAt` (a message's created_at). The filter
