@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './i18n'
 import { ConfigErrorScreen } from './components/ConfigErrorScreen'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { SupabaseConfigError, validateSupabaseConfig } from './lib/supabaseConfig'
 
 const root = createRoot(document.getElementById('root')!)
@@ -36,7 +37,9 @@ if (!hasValidSupabaseConfig()) {
     ({ default: App }) => {
       root.render(
         <StrictMode>
-          <App />
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
         </StrictMode>,
       )
     },

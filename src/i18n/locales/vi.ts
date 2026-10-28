@@ -26,6 +26,8 @@ export const vi = {
     downloadFile: 'Tải xuống {{name}}',
     openImage: 'Mở ảnh {{name}}',
     attachmentUnavailable: 'Không tải được tệp',
+    unreadDivider: 'Tin nhắn chưa đọc',
+    loadOlder: 'Tải tin cũ hơn',
     reconnecting: 'Mất kết nối, đang kết nối lại… Tin nhắn mới có thể chưa hiện.',
     loading: 'Đang tải…',
     retry: 'Thử lại',
@@ -130,6 +132,8 @@ export const vi = {
       'ChatSOS chưa được cấu hình đúng để kết nối máy chủ. Vui lòng liên hệ quản trị viên.',
     loadFailedTitle: 'Không tải được ứng dụng',
     loadFailedDescription: 'Đã có lỗi khi tải ChatSOS. Vui lòng kiểm tra kết nối và thử lại.',
+    crashTitle: 'Đã có lỗi xảy ra',
+    crashDescription: 'ChatSOS gặp lỗi không mong muốn. Tải lại trang để tiếp tục.',
     reload: 'Tải lại',
   },
 }

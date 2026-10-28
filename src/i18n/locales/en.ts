@@ -26,6 +26,8 @@ export const en: Translation = {
     downloadFile: 'Download {{name}}',
     openImage: 'Open image {{name}}',
     attachmentUnavailable: 'File unavailable',
+    unreadDivider: 'Unread messages',
+    loadOlder: 'Load older messages',
     reconnecting: 'Connection lost, reconnecting… New messages may not show yet.',
     loading: 'Loading…',
     retry: 'Try again',
@@ -130,6 +132,8 @@ export const en: Translation = {
     loadFailedTitle: "Couldn't load the app",
     loadFailedDescription:
       'Something went wrong while loading ChatSOS. Check your connection and try again.',
+    crashTitle: 'Something went wrong',
+    crashDescription: 'ChatSOS ran into an unexpected error. Reload the page to continue.',
     reload: 'Reload',
   },
 }

@@ -242,6 +242,25 @@ export async function fetchMessages(conversationId: string): Promise<ChatResult<
   return { ok: true, data: response.data.map(toMessage).reverse() }
 }
 
+// The MESSAGE_PAGE_SIZE messages just before `before`, oldest first. Ties on created_at are
+// ordered by id, like every message query, so no message is skipped or repeated.
+export async function fetchMessagesBefore(
+  conversationId: string,
+  before: Pick<Message, 'id' | 'createdAt'>,
+): Promise<ChatResult<Message[]>> {
+  const time = `"${before.createdAt}"`
+  const response = await supabase
+    .from('messages')
+    .select(MESSAGE_COLUMNS)
+    .eq('conversation_id', conversationId)
+    .or(`created_at.lt.${time},and(created_at.eq.${time},id.lt.${before.id})`)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(MESSAGE_PAGE_SIZE)
+  if (response.error) return fail(response, 'load')
+  return { ok: true, data: response.data.map(toMessage).reverse() }
+}
+
 export type TextMessageCheck =
   | { ok: true; content: string }
   | { ok: false; error: 'chat.errors.messageEmpty' | 'chat.errors.messageTooLong' }

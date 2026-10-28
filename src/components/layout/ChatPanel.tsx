@@ -1,25 +1,16 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MESSAGE_PAGE_SIZE } from '../../features/chat/api'
-import {
-  findUser,
-  formatTime,
-  getConversationTitle,
-  withLiveMessages,
-} from '../../features/chat/helpers'
+import type { CheckedFile } from '../../features/chat/attachments'
+import { getConversationTitle } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import type { PendingMessage } from '../../features/chat/useOutgoingMessages'
-import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
-import type { CheckedFile } from '../../features/chat/attachments'
-import { AttachmentView } from '../AttachmentView'
 import { Composer } from '../Composer'
-import { LoadStatus } from '../LoadStatus'
+import { MessageList } from './MessageList'
 
 interface ChatPanelProps {
   conversation: Conversation | null
-  // Messages of `conversation`, oldest first.
+  // The newest page of `conversation`'s messages, oldest first.
   messages: ChatQueryState<Message[]>
   // Messages sent or received since the chat screen opened, of every conversation.
   live: Message[]
@@ -33,16 +24,11 @@ interface ChatPanelProps {
   onDiscard: (id: string) => void
   // Unread messages in `conversation`.
   unreadCount: number
+  // The user's read marker for `conversation` (ISO 8601), or null when none is read.
+  readMarker: string | null
   // The user has seen the conversation up to the message created at `readAt`.
   onRead: (conversationId: string, readAt: string) => void
 }
-
-const BUBBLE_CLASS = 'max-w-[75%] rounded-2xl px-3 py-2'
-const MINE_CLASS = 'rounded-br-sm bg-brand-100'
-// Within this distance (px) of the bottom, new messages keep the list scrolled down.
-const STICK_DISTANCE = 80
-const SMALL_BUTTON_CLASS =
-  'rounded px-1 font-medium underline hover:text-red-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500'
 
 export function ChatPanel({
   conversation,
@@ -57,69 +43,10 @@ export function ChatPanel({
   onRetry,
   onDiscard,
   unreadCount,
+  readMarker,
   onRead,
 }: ChatPanelProps) {
-  const { t, i18n } = useTranslation()
-  const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
-  const listRef = useRef<HTMLDivElement>(null)
-  // Whether the list is at (or near) the bottom, so new messages should keep it there.
-  const stickRef = useRef(true)
-  // The same, for rendering. Belongs to one conversation; another one starts at the bottom.
-  const [bottom, setBottom] = useState({ conversationId: null as string | null, atBottom: true })
-  const loaded = messages.status === 'ready' ? messages.data : null
-  const isLoaded = loaded !== null
-  const conversationId = conversation?.id ?? null
-  const shown = conversationId
-    ? withLiveMessages(loaded ?? [], live, conversationId, MESSAGE_PAGE_SIZE)
-    : []
-  // Realtime can deliver the user's own message before the send request returns.
-  const shownIds = new Set(shown.map((message) => message.id))
-  const pendingHere = pending.filter(
-    (message) => message.conversationId === conversationId && !shownIds.has(message.id),
-  )
-  const shownCount = shown.length + pendingHere.length
-  // Changes when a pending message fails or is retried, which changes its height.
-  const pendingStatuses = pendingHere.map((message) => message.status).join()
-  const atBottom = bottom.conversationId === conversationId ? bottom.atBottom : true
-  const newest = isLoaded ? shown.at(-1) : undefined
-
-  // The user has seen the newest message when the list is at the bottom and the tab is
-  // visible; everything up to it is then read.
-  function markReadIfSeen() {
-    if (!conversationId || !newest || !stickRef.current) return
-    if (document.visibilityState !== 'visible') return
-    onRead(conversationId, newest.createdAt)
-  }
-  const markReadFromEffect = useEffectEvent(markReadIfSeen)
-
-  // An image that finishes loading grows its message; stay at the bottom if already there.
-  function keepBottom() {
-    const list = listRef.current
-    if (list && stickRef.current) list.scrollTop = list.scrollHeight
-  }
-
-  // Opening a conversation shows its newest messages.
-  useEffect(() => {
-    stickRef.current = true
-  }, [conversationId, isLoaded])
-
-  // Keeps the newest message in view as messages are added or change, unless the user
-  // has scrolled up to read older ones.
-  useEffect(() => {
-    const list = listRef.current
-    if (list && stickRef.current) list.scrollTop = list.scrollHeight
-  }, [conversationId, isLoaded, shownCount, pendingStatuses])
-
-  useEffect(() => {
-    markReadFromEffect()
-  }, [conversationId, newest?.id])
-
-  // Messages that arrived while the tab was hidden are read once it is shown again.
-  useEffect(() => {
-    const handleVisibility = () => markReadFromEffect()
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [])
+  const { t } = useTranslation()
 
   if (!conversation) {
     return (
@@ -132,7 +59,6 @@ export function ChatPanel({
   }
 
   const title = getConversationTitle(conversation, users, currentUserId)
-  const isGroup = conversation.type === 'group'
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
@@ -149,145 +75,32 @@ export function ChatPanel({
         <div className="min-w-0">
           <h2 className="truncate font-semibold">{title}</h2>
           <p className="text-sm text-slate-500">
-            {isGroup
+            {conversation.type === 'group'
               ? t('chat.members', { count: conversation.memberIds.length })
               : t('chat.direct')}
           </p>
         </div>
       </header>
 
-      <div className="relative min-h-0 flex-1">
-        <div
-          ref={listRef}
-          onScroll={(event) => {
-            const list = event.currentTarget
-            const isAtBottom =
-              list.scrollHeight - list.scrollTop - list.clientHeight <= STICK_DISTANCE
-            stickRef.current = isAtBottom
-            if (isAtBottom !== atBottom || bottom.conversationId !== conversationId) {
-              setBottom({ conversationId, atBottom: isAtBottom })
-            }
-            if (isAtBottom) markReadIfSeen()
-          }}
-          className="h-full overflow-y-auto px-4 py-4"
-        >
-          {messages.status === 'loading' && <LoadStatus status="loading" />}
-          {messages.status === 'error' && (
-            <LoadStatus status="error" error={messages.error} onRetry={messages.reload} />
-          )}
-          {loaded && shownCount === 0 && (
-            <p className="py-6 text-center text-sm text-slate-500">{t('chat.noMessages')}</p>
-          )}
-          <ol className="flex flex-col gap-2">
-            {shown.map((message) => {
-              const isMine = message.senderId === currentUserId
-              const senderName =
-                isGroup && !isMine ? findUser(users, message.senderId)?.displayName : undefined
-
-              return (
-                <li key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`${BUBBLE_CLASS} ${isMine ? MINE_CLASS : 'rounded-bl-sm bg-slate-100'}`}>
-                    {senderName && (
-                      <p className="mb-0.5 text-xs font-semibold text-brand-700">{senderName}</p>
-                    )}
-                    {message.attachment && message.kind !== 'text' && (
-                      <AttachmentView
-                        kind={message.kind}
-                        attachment={message.attachment}
-                        onLoad={keepBottom}
-                      />
-                    )}
-                    {message.content && (
-                      <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
-                    )}
-                    <time
-                      dateTime={message.createdAt}
-                      className="mt-0.5 block text-right text-xs text-slate-500"
-                    >
-                      {formatTime(message.createdAt, language)}
-                    </time>
-                  </div>
-                </li>
-              )
-            })}
-            {pendingHere.map((message) => (
-              <li key={message.id} className="flex justify-end">
-                <div
-                  className={`${BUBBLE_CLASS} ${MINE_CLASS} ${
-                    message.status === 'failed' ? 'ring-1 ring-red-300' : 'opacity-70'
-                  }`}
-                >
-                  {message.upload && (
-                    <AttachmentView
-                      kind={message.upload.checked.kind}
-                      attachment={{
-                        path: message.upload.path,
-                        name: message.upload.checked.name,
-                        size: message.upload.checked.size,
-                        mime: message.upload.checked.mime,
-                      }}
-                      pending
-                      onLoad={keepBottom}
-                    />
-                  )}
-                  {message.content && (
-                    <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
-                  )}
-                  {message.status === 'sending' ? (
-                    <p role="status" className="mt-0.5 text-right text-xs text-slate-500">
-                      {t(message.upload ? 'chat.uploading' : 'chat.sending')}
-                    </p>
-                  ) : (
-                    <div role="alert" className="mt-1 text-right text-xs text-red-700">
-                      <p>{t(message.error ?? 'chat.errors.sendFailed')}</p>
-                      <div className="mt-0.5 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onRetry(message)}
-                          className={SMALL_BUTTON_CLASS}
-                        >
-                          {t('chat.retry')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDiscard(message.id)}
-                          className={SMALL_BUTTON_CLASS}
-                        >
-                          {t('chat.discard')}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-        {!atBottom && unreadCount > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              const list = listRef.current
-              list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
-            }}
-            className="absolute right-4 bottom-4 rounded-full bg-brand-500 px-3 py-1.5 text-sm font-medium text-white shadow-md hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-          >
-            {t('chat.newMessages', { count: unreadCount })} <span aria-hidden="true">↓</span>
-          </button>
-        )}
-      </div>
+      <MessageList
+        key={`messages:${conversation.id}`}
+        conversation={conversation}
+        latest={messages}
+        live={live}
+        pending={pending}
+        users={users}
+        currentUserId={currentUserId}
+        unreadCount={unreadCount}
+        readMarker={readMarker}
+        onRetry={onRetry}
+        onDiscard={onDiscard}
+        onRead={onRead}
+      />
 
       <Composer
-        key={conversation.id}
-        onSend={(content) => {
-          // The user's own message always scrolls into view.
-          stickRef.current = true
-          onSend(conversation.id, content)
-        }}
-        onSendFile={(file, checked) => {
-          stickRef.current = true
-          onSendFile(conversation.id, file, checked)
-        }}
+        key={`composer:${conversation.id}`}
+        onSend={(content) => onSend(conversation.id, content)}
+        onSendFile={(file, checked) => onSendFile(conversation.id, file, checked)}
       />
     </div>
   )

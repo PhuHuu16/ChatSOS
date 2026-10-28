@@ -51,16 +51,16 @@ export function getLastMessage(messages: Message[], conversationId: string): Mes
 }
 
 // `loaded` (oldest first) plus the `live` messages of this conversation it does not have
-// yet (sent or received since it loaded). When `loaded` is a full page it may not reach
-// back to older live messages; those are left out so no gap appears before the page.
+// yet (sent or received since it loaded). Unless `loaded` reaches back to the first
+// message (`complete`), live messages older than it are left out so no gap appears.
 export function withLiveMessages(
   loaded: Message[],
   live: Message[],
   conversationId: string,
-  pageSize: number,
+  complete: boolean,
 ): Message[] {
   const loadedIds = new Set(loaded.map((message) => message.id))
-  const oldest = loaded.length >= pageSize ? loaded[0] : undefined
+  const oldest = complete ? undefined : loaded[0]
   const seen = new Set<string>()
   const extra = live.filter((message) => {
     if (message.conversationId !== conversationId || loadedIds.has(message.id)) return false
@@ -107,6 +107,13 @@ export function countUnread(
     idsByConversation.set(message.conversationId, ids)
   }
   return new Map([...idsByConversation].map(([id, ids]) => [id, ids.size]))
+}
+
+// Every message of the given lists once, oldest first.
+export function mergeMessages(...lists: Message[][]): Message[] {
+  const byId = new Map<string, Message>()
+  for (const list of lists) for (const message of list) byId.set(message.id, message)
+  return [...byId.values()].sort(compareMessages)
 }
 
 // Newest activity first, counting `messages` that are newer than a conversation's

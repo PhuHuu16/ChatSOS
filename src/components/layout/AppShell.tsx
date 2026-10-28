@@ -192,6 +192,9 @@ export function AppShell() {
             onRetry={outgoing.retry}
             onDiscard={outgoing.discard}
             unreadCount={selected ? (unreadCounts.get(selected.id) ?? 0) : 0}
+            readMarker={
+              selected ? laterReadMarker(selected.lastReadAt, readMarkers.get(selected.id)) : null
+            }
             onRead={handleRead}
           />
         </main>
