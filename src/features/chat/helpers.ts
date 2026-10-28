@@ -24,14 +24,36 @@ export function getConversationTitle(
   return (otherId && findUser(users, otherId)?.displayName) || ''
 }
 
+// Oldest first; the id breaks ties, like the server's ordering.
+export function compareMessages(a: Message, b: Message): number {
+  const byTime = Date.parse(a.createdAt) - Date.parse(b.createdAt)
+  if (byTime !== 0) return byTime
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
 export function getMessages(messages: Message[], conversationId: string): Message[] {
   return messages
     .filter((message) => message.conversationId === conversationId)
-    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    .sort(compareMessages)
 }
 
 export function getLastMessage(messages: Message[], conversationId: string): Message | undefined {
   return getMessages(messages, conversationId).at(-1)
+}
+
+// Newest activity first, counting `messages` that are newer than a conversation's
+// lastActivityAt (e.g. sent since the list loaded). Equal activity keeps the given order.
+export function sortByActivity(conversations: Conversation[], messages: Message[]): Conversation[] {
+  const latest = new Map<string, number>()
+  for (const message of messages) {
+    const time = Date.parse(message.createdAt)
+    if (time > (latest.get(message.conversationId) ?? -Infinity)) {
+      latest.set(message.conversationId, time)
+    }
+  }
+  const activity = (conversation: Conversation) =>
+    Math.max(Date.parse(conversation.lastActivityAt), latest.get(conversation.id) ?? -Infinity)
+  return [...conversations].sort((a, b) => activity(b) - activity(a))
 }
 
 export function formatTime(iso: string, language: string): string {

@@ -118,6 +118,7 @@ export async function fetchConversationList(): Promise<ChatResult<ConversationLi
       type: row.type,
       title: row.title,
       memberIds: memberIdsByConversation.get(row.id) ?? [],
+      lastActivityAt: row.last_message_at ?? row.created_at,
     }))
 
   return { ok: true, data: { conversations, users, lastMessages } }
@@ -151,6 +152,7 @@ export function checkTextMessage(text: string): TextMessageCheck {
 }
 
 // `id` lets the caller show the message before the server confirms it (optimistic UI).
+// Sending again with the same id is safe: it never stores a second copy.
 // sender_id and created_at always come from the database.
 export async function sendTextMessage(
   conversationId: string,
@@ -165,7 +167,31 @@ export async function sendTextMessage(
     .insert({ id, conversation_id: conversationId, kind: 'text', content: checked.content })
     .select(MESSAGE_COLUMNS)
     .single()
+  if (!response.error) return { ok: true, data: toMessage(response.data) }
+  // 23505: the id is already stored, e.g. a retry after the first reply was lost.
+  if (response.error.code === '23505') {
+    return fetchStoredTextMessage(id, conversationId, checked.content)
+  }
+  return fail(response, 'send')
+}
+
+// The stored copy of a message this client already sent. The id was generated here, so
+// a row with the same id, conversation and text is that message.
+async function fetchStoredTextMessage(
+  id: string,
+  conversationId: string,
+  content: string,
+): Promise<ChatResult<Message>> {
+  const response = await supabase
+    .from('messages')
+    .select(MESSAGE_COLUMNS)
+    .eq('id', id)
+    .eq('conversation_id', conversationId)
+    .eq('kind', 'text')
+    .eq('content', content)
+    .maybeSingle()
   if (response.error) return fail(response, 'send')
+  if (!response.data) return { ok: false, error: 'chat.errors.sendFailed' }
   return { ok: true, data: toMessage(response.data) }
 }
 

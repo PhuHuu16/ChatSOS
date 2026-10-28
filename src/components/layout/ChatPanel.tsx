@@ -3,30 +3,61 @@ import { useTranslation } from 'react-i18next'
 import { findUser, formatTime, getConversationTitle } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
+import { withSentMessages, type PendingMessage } from '../../features/chat/useOutgoingMessages'
 import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
+import { Composer } from '../Composer'
 import { LoadStatus } from '../LoadStatus'
 
 interface ChatPanelProps {
   conversation: Conversation | null
   // Messages of `conversation`, oldest first.
   messages: ChatQueryState<Message[]>
+  // Messages written in this session, of every conversation.
+  sent: Message[]
+  pending: PendingMessage[]
   users: User[]
   currentUserId: string
   onBack: () => void
+  onSend: (conversationId: string, content: string) => void
+  onRetry: (message: PendingMessage) => void
+  onDiscard: (id: string) => void
 }
 
-export function ChatPanel({ conversation, messages, users, currentUserId, onBack }: ChatPanelProps) {
+const BUBBLE_CLASS = 'max-w-[75%] rounded-2xl px-3 py-2'
+const MINE_CLASS = 'rounded-br-sm bg-brand-100'
+const SMALL_BUTTON_CLASS =
+  'rounded px-1 font-medium underline hover:text-red-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500'
+
+export function ChatPanel({
+  conversation,
+  messages,
+  sent,
+  pending,
+  users,
+  currentUserId,
+  onBack,
+  onSend,
+  onRetry,
+  onDiscard,
+}: ChatPanelProps) {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
   const listRef = useRef<HTMLDivElement>(null)
   const loaded = messages.status === 'ready' ? messages.data : null
+  const conversationId = conversation?.id ?? null
+  const shown = conversationId ? withSentMessages(loaded ?? [], sent, conversationId) : []
+  const pendingHere = pending.filter((message) => message.conversationId === conversationId)
+  const shownCount = shown.length + pendingHere.length
+  // Changes when a pending message fails or is retried, which changes its height.
+  const pendingStatuses = pendingHere.map((message) => message.status).join()
 
-  // Jump to the newest message whenever a conversation's messages have loaded.
+  // Jump to the newest message when messages load, when one is added and when a pending
+  // one changes status.
   useEffect(() => {
     const list = listRef.current
     if (list) list.scrollTop = list.scrollHeight
-  }, [loaded])
+  }, [conversationId, loaded, shownCount, pendingStatuses])
 
   if (!conversation) {
     return (
@@ -68,22 +99,18 @@ export function ChatPanel({ conversation, messages, users, currentUserId, onBack
         {messages.status === 'error' && (
           <LoadStatus status="error" error={messages.error} onRetry={messages.reload} />
         )}
-        {loaded?.length === 0 && (
+        {loaded && shownCount === 0 && (
           <p className="py-6 text-center text-sm text-slate-500">{t('chat.noMessages')}</p>
         )}
         <ol className="flex flex-col gap-2">
-          {(loaded ?? []).map((message) => {
+          {shown.map((message) => {
             const isMine = message.senderId === currentUserId
             const senderName =
               isGroup && !isMine ? findUser(users, message.senderId)?.displayName : undefined
 
             return (
               <li key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[75%] rounded-2xl px-3 py-2 ${
-                    isMine ? 'rounded-br-sm bg-brand-100' : 'rounded-bl-sm bg-slate-100'
-                  }`}
-                >
+                <div className={`${BUBBLE_CLASS} ${isMine ? MINE_CLASS : 'rounded-bl-sm bg-slate-100'}`}>
                   {senderName && (
                     <p className="mb-0.5 text-xs font-semibold text-brand-700">{senderName}</p>
                   )}
@@ -98,31 +125,46 @@ export function ChatPanel({ conversation, messages, users, currentUserId, onBack
               </li>
             )
           })}
+          {pendingHere.map((message) => (
+            <li key={message.id} className="flex justify-end">
+              <div
+                className={`${BUBBLE_CLASS} ${MINE_CLASS} ${
+                  message.status === 'failed' ? 'ring-1 ring-red-300' : 'opacity-70'
+                }`}
+              >
+                <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+                {message.status === 'sending' ? (
+                  <p role="status" className="mt-0.5 text-right text-xs text-slate-500">
+                    {t('chat.sending')}
+                  </p>
+                ) : (
+                  <div role="alert" className="mt-1 text-right text-xs text-red-700">
+                    <p>{t(message.error ?? 'chat.errors.sendFailed')}</p>
+                    <div className="mt-0.5 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onRetry(message)}
+                        className={SMALL_BUTTON_CLASS}
+                      >
+                        {t('chat.retry')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDiscard(message.id)}
+                        className={SMALL_BUTTON_CLASS}
+                      >
+                        {t('chat.discard')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
         </ol>
       </div>
 
-      <form
-        onSubmit={(event) => event.preventDefault()}
-        className="border-t border-slate-200 px-4 py-3"
-      >
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            disabled
-            placeholder={t('chat.composerPlaceholder')}
-            aria-label={t('chat.composerPlaceholder')}
-            className="min-w-0 flex-1 rounded-full border border-slate-300 bg-slate-50 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled
-            className="rounded-full bg-brand-500 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {t('chat.send')}
-          </button>
-        </div>
-        <p className="mt-2 text-center text-xs text-slate-500">{t('chat.previewNotice')}</p>
-      </form>
+      <Composer key={conversation.id} onSend={(content) => onSend(conversation.id, content)} />
     </div>
   )
 }

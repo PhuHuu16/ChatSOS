@@ -17,6 +17,8 @@ export interface Conversation {
   // Only groups have a title; direct chats are named after the other member.
   title: string | null
   memberIds: string[]
+  // ISO 8601: the last message time, or the creation time when there is none yet.
+  lastActivityAt: string
 }
 
 export interface Message {

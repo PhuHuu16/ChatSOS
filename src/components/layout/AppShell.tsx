@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../features/auth/useAuth'
 import { fetchConversationList, fetchMessages } from '../../features/chat/api'
+import { sortByActivity } from '../../features/chat/helpers'
 import { useChatQuery } from '../../features/chat/useChatQuery'
+import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
 import { ChatPanel } from './ChatPanel'
 import { Sidebar } from './Sidebar'
@@ -44,7 +46,17 @@ export function AppShell() {
 
   const list = useChatQuery(CONVERSATION_LIST_KEY, loadConversationList)
   const listData = list.status === 'ready' ? list.data : null
-  const conversations = listData?.conversations ?? []
+  const outgoing = useOutgoingMessages()
+  // Messages sent since the list loaded move their conversation up and become its last
+  // message without reloading the list.
+  const conversations = useMemo(
+    () => sortByActivity(listData?.conversations ?? [], outgoing.sent),
+    [listData, outgoing.sent],
+  )
+  const lastMessages = useMemo(
+    () => [...(listData?.lastMessages ?? []), ...outgoing.sent],
+    [listData, outgoing.sent],
+  )
   const users = listData?.users ?? []
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
   const messages = useChatQuery(selected?.id ?? null, fetchMessages)
@@ -65,7 +77,7 @@ export function AppShell() {
         <Sidebar
           list={list}
           conversations={conversations}
-          lastMessages={listData?.lastMessages ?? []}
+          lastMessages={lastMessages}
           users={users}
           currentUserId={currentUserId}
           selectedId={selectedId}
@@ -81,9 +93,14 @@ export function AppShell() {
         <ChatPanel
           conversation={selected}
           messages={messages}
+          sent={outgoing.sent}
+          pending={outgoing.pending}
           users={users}
           currentUserId={currentUserId}
           onBack={() => setSelectedId(null)}
+          onSend={outgoing.send}
+          onRetry={outgoing.retry}
+          onDiscard={outgoing.discard}
         />
       </main>
       {dialog && (
