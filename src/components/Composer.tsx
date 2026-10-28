@@ -37,11 +37,14 @@ interface ComposerProps {
   // Receives each picked, pasted or dropped file that passed the checks.
   onSendFile: (file: Blob, checked: CheckedFile) => void
   editing?: ComposerEditing | null
+  // Called as the draft changes: true while it has text, false once it is empty or sent.
+  // Not called while editing an existing message.
+  onTyping?: (typing: boolean) => void
 }
 
 // Render with a `key` made of the conversation id and the id of the message being edited,
 // so each conversation and each edit starts with its own draft.
-export function Composer({ onSend, onSendFile, editing = null }: ComposerProps) {
+export function Composer({ onSend, onSendFile, editing = null, onTyping }: ComposerProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(editing?.content ?? '')
   // The first rejected file of the last pick, paste or drop.
@@ -81,6 +84,7 @@ export function Composer({ onSend, onSendFile, editing = null }: ComposerProps) 
       return
     }
     onSend(checked.content)
+    onTyping?.(false)
     setDraft('')
     textareaRef.current?.focus()
   }
@@ -197,6 +201,7 @@ export function Composer({ onSend, onSendFile, editing = null }: ComposerProps) 
           onChange={(event) => {
             setDraft(event.target.value)
             setFileError(null)
+            if (!editing) onTyping?.(event.target.value.trim() !== '')
           }}
           onKeyDown={handleKeyDown}
           onPaste={(event) => {

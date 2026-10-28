@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { parseMessageRow } from './api'
-import { withUpdate } from './helpers'
-import type { Message } from './types'
+import { parseMemberRow, parseMessageRow } from './api'
+import { laterReadMarker, withUpdate } from './helpers'
+import type { MemberRead, Message } from './types'
 
 // connecting: before the first successful subscription (shown as nothing special).
 // live: new messages arrive. interrupted: the connection dropped and is being retried.
@@ -13,10 +13,19 @@ export interface RealtimeMessages {
   received: Message[]
   // The newest copy of each message edited or recalled since the chat screen opened.
   updated: ReadonlyMap<string, Message>
+  // The newest read marker Realtime reported for each member, keyed by readKey().
+  memberReads: ReadonlyMap<string, string>
+  // Memberships created since the chat screen opened (new chats, new group members).
+  joined: MemberRead[]
   status: RealtimeStatus
 }
 
-// Listens for new, edited and recalled messages in every conversation the user belongs to. Realtime checks
+// The key of a member's read marker in RealtimeMessages.memberReads.
+export function readKey(conversationId: string, userId: string): string {
+  return `${conversationId}:${userId}`
+}
+
+// Listens for new, edited and recalled messages and for membership changes in every conversation the user belongs to. Realtime checks
 // the messages RLS policy for each subscriber, so only members receive a message.
 // `onLive` runs each time the subscription becomes active, including after a
 // reconnect: messages sent while it was not active are never delivered, so the caller
@@ -24,6 +33,8 @@ export interface RealtimeMessages {
 export function useRealtimeMessages(userId: string, onLive: () => void): RealtimeMessages {
   const [received, setReceived] = useState<Message[]>([])
   const [updated, setUpdated] = useState<ReadonlyMap<string, Message>>(new Map())
+  const [memberReads, setMemberReads] = useState<ReadonlyMap<string, string>>(new Map())
+  const [joined, setJoined] = useState<MemberRead[]>([])
   const [status, setStatus] = useState<RealtimeStatus>('connecting')
   const handleLive = useEffectEvent(onLive)
 
@@ -49,6 +60,31 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
         const message = parseMessageRow(payload.new)
         if (message) setUpdated((map) => withUpdate(map, message))
       })
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'conversation_members' },
+        (payload) => {
+          if (!active || payload.errors?.length) return
+          const member = parseMemberRow(payload.new)
+          if (member) setJoined((list) => [...list, member])
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversation_members' },
+        (payload) => {
+          if (!active || payload.errors?.length) return
+          const member = parseMemberRow(payload.new)
+          if (!member?.lastReadAt) return
+          const key = readKey(member.conversationId, member.userId)
+          const readAt = member.lastReadAt
+          // Markers only move forward; an older report never replaces a newer one.
+          setMemberReads((map) => {
+            const next = laterReadMarker(map.get(key), readAt)
+            return next === map.get(key) ? map : new Map(map).set(key, readAt)
+          })
+        },
+      )
       .subscribe((state) => {
         if (!active) return
         if (state === 'SUBSCRIBED') {
@@ -66,5 +102,5 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
     }
   }, [userId])
 
-  return { received, updated, status }
+  return { received, updated, memberReads, joined, status }
 }

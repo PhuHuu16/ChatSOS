@@ -21,6 +21,16 @@ export interface Conversation {
   lastActivityAt: string
   // ISO 8601: the current user's read marker; messages after it are unread. null = none read.
   lastReadAt: string | null
+  // Every member's read marker when the list loaded, by user id (null = none read).
+  memberReadAt: Readonly<Record<string, string | null>>
+}
+
+// A member's read marker, as Realtime reports it.
+export interface MemberRead {
+  conversationId: string
+  userId: string
+  // ISO 8601, or null when the member has read nothing.
+  lastReadAt: string | null
 }
 
 // A message from someone else that the current user has not read yet.

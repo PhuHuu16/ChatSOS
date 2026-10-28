@@ -109,6 +109,17 @@ export function countUnread(
   return new Map([...idsByConversation].map(([id, ids]) => [id, ids.size]))
 }
 
+// Ids of the members (keys of `readMarkers`) whose read marker is at or after `message`.
+export function readersOf(
+  message: Pick<Message, 'createdAt'>,
+  readMarkers: ReadonlyMap<string, string | null>,
+): string[] {
+  const sent = timestampMicros(message.createdAt)
+  return [...readMarkers]
+    .filter(([, marker]) => marker !== null && timestampMicros(marker) >= sent)
+    .map(([id]) => id)
+}
+
 // The newer of two copies of the same message. Changes only move forward: a recall is
 // final, and every edit has a later edited_at.
 export function newerVersion(a: Message, b: Message): Message {

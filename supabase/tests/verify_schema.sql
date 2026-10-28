@@ -1,5 +1,5 @@
--- ChatSOS · read-only verification. Run after all 6 migrations (the 5 of Phase 1 and
--- 20261028000100_edit_recall_messages.sql).
+-- ChatSOS · read-only verification. Run after all 7 migrations (the 5 of Phase 1,
+-- 20261028000100_edit_recall_messages.sql and 20261028000200_typing_and_read_receipts.sql).
 -- A single SELECT: it changes nothing. Failing checks are listed first, and the
 -- "== ALL CHECKS PASSED ==" row is true only when every check passed.
 --
@@ -99,7 +99,8 @@ expected_functions (signature, authenticated_can_execute) as (
     ('private.validate_message_attachment()', false),
     ('private.touch_conversation()', false),
     ('private.guard_message_update()', false),
-    ('private.attachment_unused(text)', true)
+    ('private.attachment_unused(text)', true),
+    ('private.can_use_typing_topic(text)', true)
 ),
 functions as (
   select e.signature, e.authenticated_can_execute, p.oid, p.prosecdef, p.proconfig, p.proacl
@@ -145,6 +146,12 @@ expected_policies (schema_name, table_name, policy_name, command, expected_using
     ('storage', 'objects', 'attachments: members can upload new files', 'INSERT',
       null::text,
       '((bucket_id = ''attachments''::text) AND (name ~ ''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|jpeg|png|webp|gif|pdf|txt|zip|docx|xlsx|pptx)$''::text) AND private.can_access_attachment(name))'),
+    ('realtime', 'messages', 'realtime: members receive typing', 'SELECT',
+      '((extension = ''broadcast''::text) AND private.can_use_typing_topic(( SELECT realtime.topic() AS topic)))',
+      null::text),
+    ('realtime', 'messages', 'realtime: members send typing', 'INSERT',
+      null::text,
+      '((extension = ''broadcast''::text) AND private.can_use_typing_topic(( SELECT realtime.topic() AS topic)))'),
     ('storage', 'objects', 'attachments: uploaders delete unused files', 'DELETE',
       '((bucket_id = ''attachments''::text) AND (owner_id = (( SELECT auth.uid() AS uid))::text) AND private.attachment_unused(name))',
       null::text)
@@ -309,7 +316,7 @@ checks (name, ok, detail) as (
       select count(*)
       from pg_catalog.pg_proc p
       where p.pronamespace = 'private'::regnamespace
-    ) = 6,
+    ) = 7,
     (
       select 'found: ' || coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.proname), 'none')
       from pg_catalog.pg_proc p
@@ -441,6 +448,36 @@ checks (name, ok, detail) as (
     )
 
   union all
+  -- Realtime Authorization: only the 2 typing policies may exist on realtime.messages,
+  -- so no other private channel can be joined.
+  select
+    'exactly 2 policies on realtime.messages, both expected',
+    (
+      select count(*)
+      from pg_catalog.pg_policies p
+      where p.schemaname = 'realtime' and p.tablename = 'messages'
+    ) = 2
+    and not exists (
+      select 1
+      from pg_catalog.pg_policies p
+      where p.schemaname = 'realtime'
+        and p.tablename = 'messages'
+        and not exists (
+          select 1
+          from expected_policies e
+          where e.schema_name = 'realtime'
+            and e.table_name = 'messages'
+            and e.policy_name = p.policyname
+            and e.command = p.cmd
+        )
+    ),
+    (
+      select 'found: ' || coalesce(string_agg(p.policyname, '; ' order by p.policyname), 'none')
+      from pg_catalog.pg_policies p
+      where p.schemaname = 'realtime' and p.tablename = 'messages'
+    )
+
+  union all
   -- Bucket configuration
   select
     'bucket attachments exists and is private',
@@ -496,17 +533,18 @@ checks (name, ok, detail) as (
   ) as t (trigger_name, table_name)
 
   union all
-  -- Realtime publication (necessary, not sufficient; delivery is tested in step 1D)
+  -- Realtime publication (necessary, not sufficient; delivery is tested end to end)
   select
-    'public.messages is in publication supabase_realtime',
+    format('public.%s is in publication supabase_realtime', t.table_name),
     exists (
       select 1
       from pg_catalog.pg_publication_tables pt
       where pt.pubname = 'supabase_realtime'
         and pt.schemaname = 'public'
-        and pt.tablename = 'messages'
+        and pt.tablename = t.table_name
     ),
     null
+  from (values ('messages'), ('conversation_members')) as t (table_name)
 )
 select name, ok, detail
 from (

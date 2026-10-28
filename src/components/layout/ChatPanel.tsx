@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CheckedFile } from '../../features/chat/attachments'
 import type { ChatErrorKey } from '../../features/chat/chatErrors'
-import { getConversationTitle } from '../../features/chat/helpers'
+import { findUser, getConversationTitle } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import type { PendingMessage } from '../../features/chat/useOutgoingMessages'
+import { useTyping } from '../../features/chat/useTyping'
 import { Avatar } from '../Avatar'
 import { Composer } from '../Composer'
 import { MessageList } from './MessageList'
@@ -35,6 +36,8 @@ interface ChatPanelProps {
   readMarker: string | null
   // The user has seen the conversation up to the message created at `readAt`.
   onRead: (conversationId: string, readAt: string) => void
+  // The other members' read markers in `conversation`, by user id.
+  othersRead: ReadonlyMap<string, string | null>
 }
 
 export function ChatPanel({
@@ -52,11 +55,16 @@ export function ChatPanel({
   unreadCount,
   readMarker,
   onRead,
+  othersRead,
   updates,
   onEdit,
   onRecall,
 }: ChatPanelProps) {
   const { t } = useTranslation()
+  const typing = useTyping(conversation?.id ?? null, currentUserId, conversation?.memberIds ?? [])
+  const typingNames = typing.typingUserIds
+    .map((id) => findUser(users, id)?.displayName)
+    .filter((name): name is string => Boolean(name))
   // The message being edited in the composer.
   const [editing, setEditing] = useState<Message | null>(null)
   // The message whose edit or recall is waiting for the server.
@@ -146,6 +154,8 @@ export function ChatPanel({
         currentUserId={currentUserId}
         unreadCount={unreadCount}
         readMarker={readMarker}
+        othersRead={othersRead}
+        typingNames={typingNames}
         updates={updates}
         editingId={editingHere?.id ?? null}
         changingId={changingId}
@@ -177,6 +187,7 @@ export function ChatPanel({
         key={`composer:${conversation.id}:${editingHere?.id ?? ''}`}
         onSend={(content) => onSend(conversation.id, content)}
         onSendFile={(file, checked) => onSendFile(conversation.id, file, checked)}
+        onTyping={typing.setTyping}
         editing={
           editingHere && {
             content: editingHere.content,

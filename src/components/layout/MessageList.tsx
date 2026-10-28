@@ -11,6 +11,7 @@ import {
   findUser,
   formatTime,
   mergeMessages,
+  readersOf,
   timestampMicros,
   withLiveMessages,
   withUpdates,
@@ -35,6 +36,10 @@ interface MessageListProps {
   unreadCount: number
   // The user's read marker for this conversation (ISO 8601), or null when none is read.
   readMarker: string | null
+  // The other members' read markers, by user id.
+  othersRead: ReadonlyMap<string, string | null>
+  // Display names of the other members typing now.
+  typingNames: string[]
   // The newest copy of each message edited or recalled since the chat screen opened.
   updates: ReadonlyMap<string, Message>
   // The message being edited in the composer, and the one waiting for the server to
@@ -69,6 +74,8 @@ const LOAD_OLDER_DISTANCE = 200
 const MAX_JUMP_PAGES = 3
 // Space (px) left above the first unread message for the divider.
 const JUMP_MARGIN = 48
+// Read receipts name at most this many readers, then "+N".
+const MAX_READER_NAMES = 3
 // How often (ms) the edit and recall actions are checked against their time limit.
 const CHANGE_WINDOW_TICK = 5000
 const ACTION_BUTTON_CLASS =
@@ -85,6 +92,8 @@ export function MessageList({
   currentUserId,
   unreadCount,
   readMarker,
+  othersRead,
+  typingNames,
   updates,
   editingId,
   changingId,
@@ -146,6 +155,30 @@ export function MessageList({
   // Changes when a pending message fails or is retried, which changes its height.
   const pendingStatuses = pendingHere.map((message) => message.status).join()
   const newest = loaded ? shown.at(-1) : undefined
+  // "Sent" / "Seen" under the newest message, when it is the user's own and confirmed.
+  const receiptFor =
+    newest &&
+    newest.senderId === currentUserId &&
+    newest.deletedAt === null &&
+    pendingHere.length === 0
+      ? newest
+      : undefined
+  const readerNames = receiptFor
+    ? readersOf(receiptFor, othersRead).map((id) => findUser(users, id)?.displayName ?? '')
+    : []
+  const receipt = !receiptFor
+    ? null
+    : readerNames.length === 0
+      ? t('chat.sent')
+      : conversation.type === 'direct'
+        ? t('chat.seen')
+        : t('chat.seenBy', {
+            names:
+              readerNames.slice(0, MAX_READER_NAMES).join(', ') +
+              (readerNames.length > MAX_READER_NAMES
+                ? ` +${readerNames.length - MAX_READER_NAMES}`
+                : ''),
+          })
   const openMarkerMicros = openMarker === null ? -Infinity : timestampMicros(openMarker)
   const firstUnreadId =
     openUnread > 0
@@ -237,6 +270,8 @@ export function MessageList({
           target.getBoundingClientRect().top - list.getBoundingClientRect().top - JUMP_MARGIN
         stickRef.current =
           list.scrollHeight - list.scrollTop - list.clientHeight <= STICK_DISTANCE
+        // Close enough to the end: show it all, down to the read receipt.
+        if (stickRef.current) scrollToBottom()
         markReadIfSeen()
         return
       }
@@ -294,7 +329,7 @@ export function MessageList({
           if (isAtBottom) markReadIfSeen()
           if (positionedRef.current && list.scrollTop < LOAD_OLDER_DISTANCE) void loadOlder()
         }}
-        className="h-full overflow-y-auto px-4 py-4"
+        className="h-full overflow-y-auto px-4 pt-4 pb-10"
       >
         {latest.status === 'loading' && <LoadStatus status="loading" />}
         {latest.status === 'error' && (
@@ -478,7 +513,19 @@ export function MessageList({
             </li>
           ))}
         </ol>
+        {receipt && positioned && (
+          <p className="mt-1 text-right text-xs text-slate-500">{receipt}</p>
+        )}
       </div>
+      <p
+        role="status"
+        className={`pointer-events-none absolute bottom-2 left-4 rounded-full bg-white/90 px-3 py-1 text-xs text-slate-600 shadow-sm ${
+          typingNames.length ? '' : 'sr-only'
+        }`}
+      >
+        {typingNames.length > 0 &&
+          t('chat.typing', { count: typingNames.length, names: typingNames.join(', ') })}
+      </p>
       {!atBottom && unreadCount > 0 && (
         <button
           type="button"

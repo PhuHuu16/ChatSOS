@@ -3,7 +3,15 @@
 import { supabase } from '../../lib/supabase'
 import type { Database } from '../../types/database'
 import { toChatErrorKey, type ChatAction, type ChatErrorKey } from './chatErrors'
-import type { Attachment, Conversation, Message, Profile, UnreadMessage, User } from './types'
+import type {
+  Attachment,
+  Conversation,
+  MemberRead,
+  Message,
+  Profile,
+  UnreadMessage,
+  User,
+} from './types'
 
 type MessageRow = Pick<
   Database['public']['Tables']['messages']['Row'],
@@ -124,6 +132,15 @@ export function parseMessageRow(value: unknown): Message | null {
   return message
 }
 
+// The row of a Realtime event on conversation_members, or null when it has no usable row.
+export function parseMemberRow(value: unknown): MemberRead | null {
+  if (typeof value !== 'object' || value === null) return null
+  const { conversation_id, user_id, last_read_at } = value as Record<string, unknown>
+  if (typeof conversation_id !== 'string' || typeof user_id !== 'string') return null
+  const valid = typeof last_read_at === 'string' && !Number.isNaN(Date.parse(last_read_at))
+  return { conversationId: conversation_id, userId: user_id, lastReadAt: valid ? last_read_at : null }
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = []
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
@@ -152,10 +169,14 @@ export async function fetchConversationList(
 
   const memberIdsByConversation = new Map<string, string[]>()
   const lastReadAt = new Map<string, string | null>()
+  const memberReadAt = new Map<string, Record<string, string | null>>()
   for (const member of membersResponse.data) {
     const ids = memberIdsByConversation.get(member.conversation_id) ?? []
     ids.push(member.user_id)
     memberIdsByConversation.set(member.conversation_id, ids)
+    const reads = memberReadAt.get(member.conversation_id) ?? {}
+    reads[member.user_id] = member.last_read_at
+    memberReadAt.set(member.conversation_id, reads)
     if (member.user_id === userId) lastReadAt.set(member.conversation_id, member.last_read_at)
   }
 
@@ -232,6 +253,7 @@ export async function fetchConversationList(
       memberIds: memberIdsByConversation.get(row.id) ?? [],
       lastActivityAt: row.last_message_at ?? row.created_at,
       lastReadAt: lastReadAt.get(row.id) ?? null,
+      memberReadAt: memberReadAt.get(row.id) ?? {},
     }))
 
   return { ok: true, data: { conversations, users, lastMessages, unread } }

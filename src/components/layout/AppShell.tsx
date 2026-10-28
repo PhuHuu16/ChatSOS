@@ -22,7 +22,7 @@ import type { Message } from '../../features/chat/types'
 import { useChatQuery } from '../../features/chat/useChatQuery'
 import { clearAttachmentUrls, removeAttachment } from '../../features/chat/attachments'
 import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
-import { useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
+import { readKey, useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
 import { ChatPanel } from './ChatPanel'
 import { Sidebar } from './Sidebar'
@@ -91,11 +91,31 @@ export function AppShell() {
 
   // Read markers set in this session, by conversation id. The loaded ones may be older.
   const [readMarkers, setReadMarkers] = useState<ReadonlyMap<string, string>>(new Map())
+  // The same, plus the ones Realtime reported (e.g. from the user's other tabs).
+  const ownReadMarkers = useMemo(() => {
+    const markers = new Map(readMarkers)
+    for (const conversation of conversations) {
+      const reported = realtime.memberReads.get(readKey(conversation.id, currentUserId))
+      const marker = laterReadMarker(markers.get(conversation.id), reported)
+      if (marker) markers.set(conversation.id, marker)
+    }
+    return markers
+  }, [readMarkers, conversations, realtime.memberReads, currentUserId])
   const unreadCounts = useMemo(
     () =>
-      countUnread(conversations, listData?.unread ?? [], live, currentUserId, readMarkers),
-    [conversations, listData, live, currentUserId, readMarkers],
+      countUnread(conversations, listData?.unread ?? [], live, currentUserId, ownReadMarkers),
+    [conversations, listData, live, currentUserId, ownReadMarkers],
   )
+  // The other members' read markers in the open conversation, by user id.
+  const othersRead = useMemo(() => {
+    const markers = new Map<string, string | null>()
+    for (const userId of selected?.memberIds ?? []) {
+      if (userId === currentUserId || !selected) continue
+      const reported = realtime.memberReads.get(readKey(selected.id, userId))
+      markers.set(userId, laterReadMarker(selected.memberReadAt[userId], reported))
+    }
+    return markers
+  }, [selected, realtime.memberReads, currentUserId])
 
   // The same markers, updated at once: scroll events can call handleRead several times
   // before the state above re-renders, and each marker should be sent only once.
@@ -155,8 +175,8 @@ export function AppShell() {
     }
   }, [])
 
-  // Conversations, group members and their profiles are not sent by Realtime. A message
-  // from a conversation or sender the list does not know (a chat someone just started
+  // Conversations and profiles are not sent by Realtime. A message or a membership in a
+  // conversation, or from a user, the list does not know (a chat someone just started
   // with this user, a new group member) reloads the list, once per unknown id.
   const reloadList = list.reload
   const requestedRef = useRef(new Set<string>())
@@ -165,10 +185,18 @@ export function AppShell() {
     const knownConversations = new Set(listData.conversations.map((item) => item.id))
     const knownUsers = new Set(listData.users.map((user) => user.id))
     let reload = false
-    for (const message of realtime.received) {
+    const seen = [
+      ...realtime.received.map((message) => ({
+        conversationId: message.conversationId,
+        userId: message.senderId,
+      })),
+      // A new chat with this user, or a new member in one of their groups.
+      ...realtime.joined,
+    ]
+    for (const { conversationId, userId } of seen) {
       const unknown = [
-        knownConversations.has(message.conversationId) ? null : `c:${message.conversationId}`,
-        knownUsers.has(message.senderId) ? null : `u:${message.senderId}`,
+        knownConversations.has(conversationId) ? null : `c:${conversationId}`,
+        knownUsers.has(userId) ? null : `u:${userId}`,
       ]
       for (const key of unknown) {
         if (key && !requestedRef.current.has(key)) {
@@ -178,7 +206,7 @@ export function AppShell() {
       }
     }
     if (reload) reloadList()
-  }, [listData, realtime.received, reloadList])
+  }, [listData, realtime.received, realtime.joined, reloadList])
 
   // The new chat opens as soon as the reloaded list contains it.
   function handleCreated(conversationId: string) {
@@ -230,8 +258,9 @@ export function AppShell() {
             onDiscard={outgoing.discard}
             unreadCount={selected ? (unreadCounts.get(selected.id) ?? 0) : 0}
             readMarker={
-              selected ? laterReadMarker(selected.lastReadAt, readMarkers.get(selected.id)) : null
+              selected ? laterReadMarker(selected.lastReadAt, ownReadMarkers.get(selected.id)) : null
             }
+            othersRead={othersRead}
             onRead={handleRead}
             updates={updates}
             onEdit={handleEdit}
