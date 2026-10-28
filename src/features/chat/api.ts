@@ -3,7 +3,7 @@
 import { supabase } from '../../lib/supabase'
 import type { Database } from '../../types/database'
 import { toChatErrorKey, type ChatAction, type ChatErrorKey } from './chatErrors'
-import type { Conversation, Message, User } from './types'
+import type { Conversation, Message, Profile, User } from './types'
 
 type MessageRow = Pick<
   Database['public']['Tables']['messages']['Row'],
@@ -167,4 +167,94 @@ export async function sendTextMessage(
     .single()
   if (response.error) return fail(response, 'send')
   return { ok: true, data: toMessage(response.data) }
+}
+
+// Same rule as the profiles_username_format check.
+const USERNAME_QUERY = /^[a-z0-9_]{1,32}$/
+export const PROFILE_SEARCH_LIMIT = 20
+
+// The search text as a username prefix, or null when it cannot match any username.
+export function normalizeUsernameQuery(text: string): string | null {
+  const query = text.trim().toLowerCase().replace(/^@/, '')
+  return USERNAME_QUERY.test(query) ? query : null
+}
+
+// Users whose username starts with `query` (already normalized), the caller excluded.
+export async function searchProfiles(
+  query: string,
+  excludeUserId: string,
+): Promise<ChatResult<Profile[]>> {
+  // "_" is a LIKE wildcard, so it is escaped; the other allowed characters are literal.
+  const pattern = `${query.replace(/_/g, '\\_')}%`
+  const response = await supabase
+    .from('profiles')
+    .select('id, username, display_name')
+    .ilike('username', pattern)
+    .neq('id', excludeUserId)
+    .order('username')
+    .limit(PROFILE_SEARCH_LIMIT)
+  if (response.error) return fail(response, 'load')
+  return {
+    ok: true,
+    data: response.data.map((row) => ({
+      id: row.id,
+      username: row.username,
+      displayName: row.display_name,
+    })),
+  }
+}
+
+// Returns the existing direct chat with that user, or creates it.
+export async function createDirectChat(otherUserId: string): Promise<ChatResult<string>> {
+  const response = await supabase.rpc('create_direct_conversation', {
+    p_other_user_id: otherUserId,
+  })
+  if (response.error) return fail(response, 'create')
+  return { ok: true, data: response.data }
+}
+
+// Same limits as create_group_conversation and the conversations_shape check.
+export const GROUP_TITLE_MAX_LENGTH = 100
+// Including the creator.
+export const GROUP_MAX_MEMBERS = 50
+
+export type GroupCheckErrorKey =
+  | 'chat.errors.groupTitleRequired'
+  | 'chat.errors.groupTitleTooLong'
+  | 'chat.errors.groupTitleInvalid'
+  | 'chat.errors.groupNoMembers'
+  | 'chat.errors.groupTooManyMembers'
+
+export type GroupCheck = { ok: true; title: string } | { ok: false; error: GroupCheckErrorKey }
+
+// `memberIds` are the OTHER members; the creator is added by the database.
+export function checkGroupInput(title: string, memberIds: string[]): GroupCheck {
+  const trimmed = title.trim()
+  if (trimmed === '') return { ok: false, error: 'chat.errors.groupTitleRequired' }
+  if ([...trimmed].length > GROUP_TITLE_MAX_LENGTH) {
+    return { ok: false, error: 'chat.errors.groupTitleTooLong' }
+  }
+  // eslint-disable-next-line no-control-regex -- control characters are what is rejected
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return { ok: false, error: 'chat.errors.groupTitleInvalid' }
+  if (memberIds.length === 0) return { ok: false, error: 'chat.errors.groupNoMembers' }
+  if (memberIds.length + 1 > GROUP_MAX_MEMBERS) {
+    return { ok: false, error: 'chat.errors.groupTooManyMembers' }
+  }
+  return { ok: true, title: trimmed }
+}
+
+export async function createGroupChat(
+  title: string,
+  memberIds: string[],
+): Promise<ChatResult<string>> {
+  const uniqueIds = [...new Set(memberIds)]
+  const checked = checkGroupInput(title, uniqueIds)
+  if (!checked.ok) return checked
+
+  const response = await supabase.rpc('create_group_conversation', {
+    p_title: checked.title,
+    p_member_ids: uniqueIds,
+  })
+  if (response.error) return fail(response, 'create')
+  return { ok: true, data: response.data }
 }

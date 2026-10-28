@@ -22,10 +22,15 @@ interface SidebarProps {
   currentUserId: string
   selectedId: string | null
   onSelect: (conversationId: string) => void
+  onNewChat: () => void
+  onNewGroup: () => void
   onSignOut: () => void
   signingOut: boolean
   signOutFailed: boolean
 }
+
+const NEW_BUTTON_CLASS =
+  'flex-1 rounded-md border border-brand-500 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500'
 
 export function Sidebar({
   list,
@@ -35,6 +40,8 @@ export function Sidebar({
   currentUserId,
   selectedId,
   onSelect,
+  onNewChat,
+  onNewGroup,
   onSignOut,
   signingOut,
   signOutFailed,
@@ -65,10 +72,19 @@ export function Sidebar({
         </p>
       )}
 
+      <div className="flex gap-2 border-b border-slate-200 px-4 py-2">
+        <button type="button" onClick={onNewChat} className={NEW_BUTTON_CLASS}>
+          {t('chat.newChat')}
+        </button>
+        <button type="button" onClick={onNewGroup} className={NEW_BUTTON_CLASS}>
+          {t('chat.newGroup')}
+        </button>
+      </div>
+
       <nav aria-label={t('chat.listLabel')} className="flex-1 overflow-y-auto">
         {list.status === 'loading' && <LoadStatus status="loading" />}
         {list.status === 'error' && (
-          <LoadStatus status="error" error={list.error} onRetry={list.retry} />
+          <LoadStatus status="error" error={list.error} onRetry={list.reload} />
         )}
         {list.status === 'ready' && conversations.length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-slate-500">{t('chat.noConversations')}</p>

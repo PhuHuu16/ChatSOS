@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useAuth } from '../../features/auth/useAuth'
 import { fetchConversationList, fetchMessages } from '../../features/chat/api'
 import { useChatQuery } from '../../features/chat/useChatQuery'
+import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
 import { ChatPanel } from './ChatPanel'
 import { Sidebar } from './Sidebar'
 
@@ -11,6 +12,7 @@ const loadConversationList = () => fetchConversationList()
 
 export function AppShell() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [dialog, setDialog] = useState<NewChatMode | null>(null)
   const { session, signOut } = useAuth()
   // AppShell is only rendered for the signedIn status, so the session is present.
   const currentUserId = session?.user.id ?? ''
@@ -47,6 +49,13 @@ export function AppShell() {
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
   const messages = useChatQuery(selected?.id ?? null, fetchMessages)
 
+  // The new chat opens as soon as the reloaded list contains it.
+  function handleCreated(conversationId: string) {
+    setDialog(null)
+    setSelectedId(conversationId)
+    list.reload()
+  }
+
   // On small screens only one column is visible: the list, or the open chat.
   return (
     <div className="flex h-full">
@@ -61,6 +70,8 @@ export function AppShell() {
           currentUserId={currentUserId}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          onNewChat={() => setDialog('direct')}
+          onNewGroup={() => setDialog('group')}
           onSignOut={() => void handleSignOut()}
           signingOut={signingOut}
           signOutFailed={signOutFailed}
@@ -75,6 +86,14 @@ export function AppShell() {
           onBack={() => setSelectedId(null)}
         />
       </main>
+      {dialog && (
+        <NewChatDialog
+          mode={dialog}
+          currentUserId={currentUserId}
+          onClose={() => setDialog(null)}
+          onCreated={handleCreated}
+        />
+      )}
     </div>
   )
 }

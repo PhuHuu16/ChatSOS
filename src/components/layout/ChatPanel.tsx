@@ -66,7 +66,7 @@ export function ChatPanel({ conversation, messages, users, currentUserId, onBack
       <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.status === 'loading' && <LoadStatus status="loading" />}
         {messages.status === 'error' && (
-          <LoadStatus status="error" error={messages.error} onRetry={messages.retry} />
+          <LoadStatus status="error" error={messages.error} onRetry={messages.reload} />
         )}
         {loaded?.length === 0 && (
           <p className="py-6 text-center text-sm text-slate-500">{t('chat.noMessages')}</p>

@@ -6,7 +6,7 @@ export type ChatQueryState<T> = (
   | { status: 'loading' }
   | { status: 'ready'; data: T }
   | { status: 'error'; error: ChatErrorKey }
-) & { retry: () => void }
+) & { reload: () => void }
 
 interface Settled<T> {
   key: string
@@ -14,10 +14,11 @@ interface Settled<T> {
   result: ChatResult<T>
 }
 
-// Loads `load(key)` whenever `key` changes (null = nothing to load) and on retry().
+// Loads `load(key)` whenever `key` changes (null = nothing to load) and on reload().
 // `load` must be stable (a module-level function). "Loading" is derived from whether the
 // last settled result belongs to the current key and attempt, so the effect never sets
-// state synchronously and a late response for an old key is never shown.
+// state synchronously and a late response for an old key is never shown. During a
+// reload, data that loaded fine stays visible until the new result arrives.
 export function useChatQuery<T>(
   key: string | null,
   load: (key: string) => Promise<ChatResult<T>>,
@@ -38,11 +39,12 @@ export function useChatQuery<T>(
     }
   }, [key, attempt, load])
 
-  const retry = useCallback(() => setAttempt((value) => value + 1), [])
+  const reload = useCallback(() => setAttempt((value) => value + 1), [])
 
-  if (key === null || settled?.key !== key || settled.attempt !== attempt) {
-    return { status: 'loading', retry }
+  if (key === null || settled?.key !== key) return { status: 'loading', reload }
+  if (!settled.result.ok) {
+    if (settled.attempt !== attempt) return { status: 'loading', reload }
+    return { status: 'error', error: settled.result.error, reload }
   }
-  if (!settled.result.ok) return { status: 'error', error: settled.result.error, retry }
-  return { status: 'ready', data: settled.result.data, retry }
+  return { status: 'ready', data: settled.result.data, reload }
 }

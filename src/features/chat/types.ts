@@ -6,6 +6,11 @@ export interface User {
   displayName: string
 }
 
+// A user found by username search, e.g. when starting a chat.
+export interface Profile extends User {
+  username: string
+}
+
 export interface Conversation {
   id: string
   type: ConversationType
