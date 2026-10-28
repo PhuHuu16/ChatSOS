@@ -19,6 +19,15 @@ export interface Conversation {
   memberIds: string[]
   // ISO 8601: the last message time, or the creation time when there is none yet.
   lastActivityAt: string
+  // ISO 8601: the current user's read marker; messages after it are unread. null = none read.
+  lastReadAt: string | null
+}
+
+// A message from someone else that the current user has not read yet.
+export interface UnreadMessage {
+  id: string
+  conversationId: string
+  createdAt: string
 }
 
 export interface Message {

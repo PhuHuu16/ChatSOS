@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../features/auth/useAuth'
-import { fetchConversationList, fetchMessages } from '../../features/chat/api'
-import { sortByActivity } from '../../features/chat/helpers'
+import {
+  fetchConversationList,
+  fetchMessages,
+  markConversationRead,
+} from '../../features/chat/api'
+import {
+  countUnread,
+  laterReadMarker,
+  sortByActivity,
+  timestampMicros,
+} from '../../features/chat/helpers'
 import { useChatQuery } from '../../features/chat/useChatQuery'
 import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
 import { useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
 import { ChatPanel } from './ChatPanel'
 import { Sidebar } from './Sidebar'
-
-// useChatQuery needs a stable loader; the list has no key of its own.
-const CONVERSATION_LIST_KEY = 'conversations'
-const loadConversationList = () => fetchConversationList()
 
 export function AppShell() {
   const { t } = useTranslation()
@@ -47,7 +52,7 @@ export function AppShell() {
     }
   }
 
-  const list = useChatQuery(CONVERSATION_LIST_KEY, loadConversationList)
+  const list = useChatQuery(currentUserId, fetchConversationList)
   const listData = list.status === 'ready' ? list.data : null
   const outgoing = useOutgoingMessages()
   const realtime = useRealtimeMessages(currentUserId, handleRealtimeLive)
@@ -65,6 +70,29 @@ export function AppShell() {
   const users = listData?.users ?? []
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
   const messages = useChatQuery(selected?.id ?? null, fetchMessages)
+
+  // Read markers set in this session, by conversation id. The loaded ones may be older.
+  const [readMarkers, setReadMarkers] = useState<ReadonlyMap<string, string>>(new Map())
+  const unreadCounts = useMemo(
+    () =>
+      countUnread(conversations, listData?.unread ?? [], live, currentUserId, readMarkers),
+    [conversations, listData, live, currentUserId, readMarkers],
+  )
+
+  // The same markers, updated at once: scroll events can call handleRead several times
+  // before the state above re-renders, and each marker should be sent only once.
+  const sentMarkersRef = useRef(new Map<string, string>())
+
+  // Called by the open chat with the newest message the user can see.
+  function handleRead(conversationId: string, readAt: string) {
+    const loadedMarker = conversations.find((item) => item.id === conversationId)?.lastReadAt
+    const marker = laterReadMarker(loadedMarker, sentMarkersRef.current.get(conversationId))
+    if (marker !== null && timestampMicros(readAt) <= timestampMicros(marker)) return
+    sentMarkersRef.current.set(conversationId, readAt)
+    setReadMarkers((markers) => new Map(markers).set(conversationId, readAt))
+    // A failure only means the badge may come back after a reload; nothing to show.
+    void markConversationRead(conversationId, currentUserId, readAt)
+  }
 
   // Messages sent while Realtime was not subscribed are never delivered, so what is shown
   // is reloaded whenever the subscription (re)starts. Loaded data stays visible meanwhile.
@@ -121,6 +149,7 @@ export function AppShell() {
             list={list}
             conversations={conversations}
             lastMessages={lastMessages}
+            unreadCounts={unreadCounts}
             users={users}
             currentUserId={currentUserId}
             selectedId={selectedId}
@@ -144,6 +173,8 @@ export function AppShell() {
             onSend={outgoing.send}
             onRetry={outgoing.retry}
             onDiscard={outgoing.discard}
+            unreadCount={selected ? (unreadCounts.get(selected.id) ?? 0) : 0}
+            onRead={handleRead}
           />
         </main>
       </div>

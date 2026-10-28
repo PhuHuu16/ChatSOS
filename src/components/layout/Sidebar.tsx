@@ -5,6 +5,7 @@ import {
   getConversationTitle,
   getLastMessage,
 } from '../../features/chat/helpers'
+import { UNREAD_LIMIT } from '../../features/chat/api'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import { DEFAULT_LANGUAGE } from '../../i18n'
@@ -18,6 +19,8 @@ interface SidebarProps {
   conversations: Conversation[]
   // The newest message of each conversation that has one.
   lastMessages: Message[]
+  // Unread message count by conversation id; missing = none.
+  unreadCounts: ReadonlyMap<string, number>
   users: User[]
   currentUserId: string
   selectedId: string | null
@@ -36,6 +39,7 @@ export function Sidebar({
   list,
   conversations,
   lastMessages,
+  unreadCounts,
   users,
   currentUserId,
   selectedId,
@@ -94,6 +98,7 @@ export function Sidebar({
             const title = getConversationTitle(conversation, users, currentUserId)
             const last = getLastMessage(lastMessages, conversation.id)
             const isSelected = conversation.id === selectedId
+            const unread = unreadCounts.get(conversation.id) ?? 0
 
             let prefix = ''
             if (last?.senderId === currentUserId) {
@@ -116,7 +121,9 @@ export function Sidebar({
                   <Avatar id={conversation.id} name={title} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate font-medium">{title}</span>
+                      <span className={`truncate ${unread > 0 ? 'font-semibold' : 'font-medium'}`}>
+                        {title}
+                      </span>
                       {last && (
                         <time
                           dateTime={last.createdAt}
@@ -126,12 +133,22 @@ export function Sidebar({
                         </time>
                       )}
                     </span>
-                    {last && (
-                      <span className="block truncate text-sm text-slate-500">
-                        {prefix}
-                        {last.content}
-                      </span>
-                    )}
+                    <span className="flex items-center justify-between gap-2">
+                      {last && (
+                        <span className="min-w-0 truncate text-sm text-slate-500">
+                          {prefix}
+                          {last.content}
+                        </span>
+                      )}
+                      {unread > 0 && (
+                        <span className="ml-auto shrink-0 rounded-full bg-brand-500 px-1.5 py-0.5 text-xs leading-none font-semibold text-white">
+                          <span aria-hidden="true">
+                            {unread >= UNREAD_LIMIT ? `${UNREAD_LIMIT - 1}+` : unread}
+                          </span>
+                          <span className="sr-only">{t('chat.unread', { count: unread })}</span>
+                        </span>
+                      )}
+                    </span>
                   </span>
                 </button>
               </li>

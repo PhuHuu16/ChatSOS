@@ -14,6 +14,11 @@ export const vi = {
     send: 'Gửi',
     sending: 'Đang gửi…',
     discard: 'Xoá',
+    // Vietnamese has no plural forms; both keys exist so vi and en share one shape.
+    unread_one: '{{count}} tin nhắn chưa đọc',
+    unread_other: '{{count}} tin nhắn chưa đọc',
+    newMessages_one: '{{count}} tin nhắn mới',
+    newMessages_other: '{{count}} tin nhắn mới',
     reconnecting: 'Mất kết nối, đang kết nối lại… Tin nhắn mới có thể chưa hiện.',
     loading: 'Đang tải…',
     retry: 'Thử lại',

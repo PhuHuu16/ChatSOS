@@ -3,7 +3,7 @@
 import { supabase } from '../../lib/supabase'
 import type { Database } from '../../types/database'
 import { toChatErrorKey, type ChatAction, type ChatErrorKey } from './chatErrors'
-import type { Conversation, Message, Profile, User } from './types'
+import type { Conversation, Message, Profile, UnreadMessage, User } from './types'
 
 type MessageRow = Pick<
   Database['public']['Tables']['messages']['Row'],
@@ -13,6 +13,8 @@ type MessageRow = Pick<
 // Same limit as the messages_content_length check (char_length counts code points).
 export const MESSAGE_MAX_LENGTH = 4000
 export const MESSAGE_PAGE_SIZE = 50
+// Unread messages loaded per conversation; the badge shows "99+" beyond 99.
+export const UNREAD_LIMIT = 100
 // Keeps each `id=in.(...)` request URL well under server limits.
 const PROFILE_BATCH_SIZE = 100
 
@@ -27,6 +29,8 @@ export interface ConversationList {
   users: User[]
   // The newest message of each conversation that has one.
   lastMessages: Message[]
+  // Up to UNREAD_LIMIT newest unread messages per conversation.
+  unread: UnreadMessage[]
 }
 
 interface FailedResponse {
@@ -82,23 +86,33 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-export async function fetchConversationList(): Promise<ChatResult<ConversationList>> {
+// `userId` is the signed-in user: it picks their read markers and leaves out their own
+// messages when counting unread ones.
+export async function fetchConversationList(
+  userId: string,
+): Promise<ChatResult<ConversationList>> {
   const conversationsResponse = await supabase
     .from('conversations')
     .select('id, type, title, created_at, last_message_at')
   if (conversationsResponse.error) return fail(conversationsResponse, 'load')
   const rows = conversationsResponse.data
-  if (rows.length === 0) return { ok: true, data: { conversations: [], users: [], lastMessages: [] } }
+  if (rows.length === 0) {
+    return { ok: true, data: { conversations: [], users: [], lastMessages: [], unread: [] } }
+  }
 
   // RLS returns the members of the caller's conversations only.
-  const membersResponse = await supabase.from('conversation_members').select('conversation_id, user_id')
+  const membersResponse = await supabase
+    .from('conversation_members')
+    .select('conversation_id, user_id, last_read_at')
   if (membersResponse.error) return fail(membersResponse, 'load')
 
   const memberIdsByConversation = new Map<string, string[]>()
+  const lastReadAt = new Map<string, string | null>()
   for (const member of membersResponse.data) {
     const ids = memberIdsByConversation.get(member.conversation_id) ?? []
     ids.push(member.user_id)
     memberIdsByConversation.set(member.conversation_id, ids)
+    if (member.user_id === userId) lastReadAt.set(member.conversation_id, member.last_read_at)
   }
 
   const userIds = [...new Set(membersResponse.data.map((member) => member.user_id))]
@@ -137,6 +151,33 @@ export async function fetchConversationList(): Promise<ChatResult<ConversationLi
     if (row) lastMessages.push(toMessage(row))
   }
 
+  // Only conversations with a message after the read marker can have unread messages.
+  const unreadResponses = await Promise.all(
+    rows
+      .filter((row) => {
+        if (row.last_message_at === null) return false
+        const readAt = lastReadAt.get(row.id) ?? null
+        return readAt === null || Date.parse(row.last_message_at) >= Date.parse(readAt)
+      })
+      .map((row) => {
+        const readAt = lastReadAt.get(row.id) ?? null
+        let query = supabase
+          .from('messages')
+          .select('id, conversation_id, created_at')
+          .eq('conversation_id', row.id)
+          .neq('sender_id', userId)
+        if (readAt !== null) query = query.gt('created_at', readAt)
+        return query.order('created_at', { ascending: false }).limit(UNREAD_LIMIT)
+      }),
+  )
+  const unread: UnreadMessage[] = []
+  for (const response of unreadResponses) {
+    if (response.error) return fail(response, 'load')
+    for (const row of response.data) {
+      unread.push({ id: row.id, conversationId: row.conversation_id, createdAt: row.created_at })
+    }
+  }
+
   const activity = (row: (typeof rows)[number]) => Date.parse(row.last_message_at ?? row.created_at)
   const conversations: Conversation[] = [...rows]
     .sort((a, b) => activity(b) - activity(a))
@@ -146,9 +187,10 @@ export async function fetchConversationList(): Promise<ChatResult<ConversationLi
       title: row.title,
       memberIds: memberIdsByConversation.get(row.id) ?? [],
       lastActivityAt: row.last_message_at ?? row.created_at,
+      lastReadAt: lastReadAt.get(row.id) ?? null,
     }))
 
-  return { ok: true, data: { conversations, users, lastMessages } }
+  return { ok: true, data: { conversations, users, lastMessages, unread } }
 }
 
 // The newest MESSAGE_PAGE_SIZE messages of a conversation, oldest first. An empty list
@@ -220,6 +262,23 @@ async function fetchStoredTextMessage(
   if (response.error) return fail(response, 'send')
   if (!response.data) return { ok: false, error: 'chat.errors.sendFailed' }
   return { ok: true, data: toMessage(response.data) }
+}
+
+// Moves the user's read marker forward to `readAt` (a message's created_at). The filter
+// keeps it from moving back when another tab has already marked a newer message read.
+export async function markConversationRead(
+  conversationId: string,
+  userId: string,
+  readAt: string,
+): Promise<ChatResult<null>> {
+  const response = await supabase
+    .from('conversation_members')
+    .update({ last_read_at: readAt })
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userId)
+    .or(`last_read_at.is.null,last_read_at.lt."${readAt}"`)
+  if (response.error) return fail(response, 'load')
+  return { ok: true, data: null }
 }
 
 // Same rule as the profiles_username_format check.

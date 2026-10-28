@@ -1,4 +1,4 @@
-import type { Conversation, Message, User } from './types'
+import type { Conversation, Message, UnreadMessage, User } from './types'
 
 // Full class names so Tailwind can find them when scanning the source.
 const AVATAR_COLORS = [
@@ -24,9 +24,18 @@ export function getConversationTitle(
   return (otherId && findUser(users, otherId)?.displayName) || ''
 }
 
+// Microseconds since the epoch of a server timestamp. Postgres keeps microseconds, which
+// Date drops, so messages written in the same millisecond still compare correctly.
+export function timestampMicros(iso: string): number {
+  const ms = Date.parse(iso)
+  const fraction = /T[^.+Z-]*\.(\d+)/.exec(iso)?.[1]
+  if (!fraction) return ms * 1000
+  return Math.floor(ms / 1000) * 1_000_000 + Number(fraction.padEnd(6, '0').slice(0, 6))
+}
+
 // Oldest first; the id breaks ties, like the server's ordering.
 export function compareMessages(a: Message, b: Message): number {
-  const byTime = Date.parse(a.createdAt) - Date.parse(b.createdAt)
+  const byTime = timestampMicros(a.createdAt) - timestampMicros(b.createdAt)
   if (byTime !== 0) return byTime
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
@@ -61,6 +70,43 @@ export function withLiveMessages(
   })
   if (extra.length === 0) return loaded
   return [...loaded, ...extra].sort(compareMessages)
+}
+
+// The later of two read markers (ISO 8601, either may be missing).
+export function laterReadMarker(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  if (!a) return b ?? null
+  if (!b) return a
+  return timestampMicros(b) > timestampMicros(a) ? b : a
+}
+
+// Unread count per conversation: the unread messages loaded with the list plus messages
+// from others received since, minus those at or before the read marker. `readMarkers`
+// holds markers set in this session, which may be newer than the loaded ones.
+export function countUnread(
+  conversations: Conversation[],
+  unread: UnreadMessage[],
+  live: Message[],
+  currentUserId: string,
+  readMarkers: ReadonlyMap<string, string>,
+): Map<string, number> {
+  const readAt = new Map<string, number>()
+  for (const conversation of conversations) {
+    const marker = laterReadMarker(conversation.lastReadAt, readMarkers.get(conversation.id))
+    readAt.set(conversation.id, marker === null ? -Infinity : timestampMicros(marker))
+  }
+  const idsByConversation = new Map<string, Set<string>>()
+  const candidates = [...unread, ...live.filter((message) => message.senderId !== currentUserId)]
+  for (const message of candidates) {
+    const marker = readAt.get(message.conversationId)
+    if (marker === undefined || timestampMicros(message.createdAt) <= marker) continue
+    const ids = idsByConversation.get(message.conversationId) ?? new Set<string>()
+    ids.add(message.id)
+    idsByConversation.set(message.conversationId, ids)
+  }
+  return new Map([...idsByConversation].map(([id, ids]) => [id, ids.size]))
 }
 
 // Newest activity first, counting `messages` that are newer than a conversation's
