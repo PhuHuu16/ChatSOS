@@ -24,6 +24,18 @@ export function getConversationTitle(
   return (otherId && findUser(users, otherId)?.displayName) || ''
 }
 
+// The avatar shown for a conversation: the other member's in a direct chat. Groups have
+// no avatar and keep their initials.
+export function getConversationAvatarPath(
+  conversation: Conversation,
+  users: User[],
+  currentUserId: string,
+): string | null {
+  if (conversation.type === 'group') return null
+  const otherId = conversation.memberIds.find((id) => id !== currentUserId)
+  return (otherId && findUser(users, otherId)?.avatarPath) || null
+}
+
 // Microseconds since the epoch of a server timestamp. Postgres keeps microseconds, which
 // Date drops, so messages written in the same millisecond still compare correctly.
 export function timestampMicros(iso: string): number {

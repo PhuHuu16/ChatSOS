@@ -2,12 +2,14 @@ import { useTranslation } from 'react-i18next'
 import {
   findUser,
   formatTime,
+  getConversationAvatarPath,
   getConversationTitle,
   getLastMessage,
 } from '../../features/chat/helpers'
 import { UNREAD_LIMIT } from '../../features/chat/api'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
+import type { OwnProfile } from '../../features/profile/profileApi'
 import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
 import { LanguageSwitcher } from '../LanguageSwitcher'
@@ -30,6 +32,11 @@ interface SidebarProps {
   onSignOut: () => void
   signingOut: boolean
   signOutFailed: boolean
+  // The signed-in user's profile; null while it loads or when it failed to load.
+  profile: OwnProfile | null
+  profileFailed: boolean
+  onRetryProfile: () => void
+  onOpenProfile: () => void
 }
 
 const NEW_BUTTON_CLASS =
@@ -49,6 +56,10 @@ export function Sidebar({
   onSignOut,
   signingOut,
   signOutFailed,
+  profile,
+  profileFailed,
+  onRetryProfile,
+  onOpenProfile,
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
@@ -75,6 +86,38 @@ export function Sidebar({
           {t('auth.errors.signOutFailed')}
         </p>
       )}
+
+      <div className="border-b border-slate-200 px-2 py-2">
+        {profile ? (
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            aria-haspopup="dialog"
+            title={t('profile.open')}
+            className="flex w-full items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          >
+            <Avatar id={profile.id} name={profile.displayName} avatarPath={profile.avatarPath} size="sm" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">{profile.displayName}</span>
+              <span className="block truncate text-xs text-slate-500">@{profile.username}</span>
+            </span>
+            <span className="sr-only">{t('profile.open')}</span>
+          </button>
+        ) : profileFailed ? (
+          <p role="alert" className="flex items-center justify-between gap-2 px-2 py-1 text-sm text-red-700">
+            {t('profile.loadFailed')}
+            <button
+              type="button"
+              onClick={onRetryProfile}
+              className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            >
+              {t('chat.retry')}
+            </button>
+          </p>
+        ) : (
+          <p className="px-2 py-1 text-sm text-slate-500">{t('chat.loading')}</p>
+        )}
+      </div>
 
       <div className="flex gap-2 border-b border-slate-200 px-4 py-2">
         <button type="button" onClick={onNewChat} className={NEW_BUTTON_CLASS}>
@@ -118,7 +161,11 @@ export function Sidebar({
                     isSelected ? 'bg-brand-50' : 'hover:bg-slate-50'
                   }`}
                 >
-                  <Avatar id={conversation.id} name={title} />
+                  <Avatar
+                    id={conversation.id}
+                    name={title}
+                    avatarPath={getConversationAvatarPath(conversation, users, currentUserId)}
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
                       <span className={`truncate ${unread > 0 ? 'font-semibold' : 'font-medium'}`}>

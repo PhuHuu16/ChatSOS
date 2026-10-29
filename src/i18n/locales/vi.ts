@@ -88,6 +88,63 @@ export const vi = {
       changeFailed: 'Không sửa hoặc thu hồi được tin nhắn. Vui lòng thử lại.',
     },
   },
+  profile: {
+    title: 'Hồ sơ',
+    open: 'Mở hồ sơ của bạn',
+    loadFailed: 'Không tải được hồ sơ.',
+    close: 'Đóng',
+    changePhoto: 'Đổi ảnh',
+    removePhoto: 'Xoá ảnh',
+    processingPhoto: 'Đang xử lý ảnh…',
+    photoHint:
+      'Ảnh JPG, PNG, WebP hoặc GIF, tối đa {{maxMb}} MB. Ảnh được cắt vuông ở giữa và thu nhỏ còn 256×256.',
+    previewAlt: 'Xem trước ảnh đại diện mới',
+    photoPending: 'Đã chọn ảnh đại diện mới. Bấm Lưu để áp dụng.',
+    removePending: 'Ảnh đại diện sẽ được xoá khi bạn bấm Lưu.',
+    usernameHint: 'Không thể đổi tên người dùng.',
+    cancel: 'Huỷ',
+    save: 'Lưu',
+    saving: 'Đang lưu…',
+    savingWithPhoto: 'Đang tải ảnh lên và lưu…',
+    saved: 'Đã lưu hồ sơ.',
+    nothingToSave: 'Không có thay đổi nào để lưu.',
+    cleanup: {
+      oldNotConfirmed:
+        'Chưa xác nhận được ảnh cũ đã bị xoá khỏi máy chủ; tệp đó có thể vẫn còn.',
+      oldFailed: 'Không xoá được ảnh cũ khỏi máy chủ (lỗi hoặc mất kết nối); tệp đó vẫn còn.',
+      newNotConfirmed:
+        'Chưa xác nhận được ảnh vừa tải lên đã bị xoá khỏi máy chủ; tệp đó có thể vẫn còn.',
+      newFailed:
+        'Không xoá được ảnh vừa tải lên khỏi máy chủ (lỗi hoặc mất kết nối); tệp đó vẫn còn.',
+      newKept:
+        'Ảnh vừa tải lên được giữ lại trên máy chủ vì chưa xác định được hồ sơ có đang dùng nó hay không.',
+    },
+    errors: {
+      conflict:
+        'Chưa lưu: hồ sơ vừa được thay đổi ở nơi khác. Đã tải bản mới nhất (tên hiện tại: “{{name}}”). Nội dung bạn nhập vẫn được giữ; bấm Lưu nếu vẫn muốn đổi.',
+      conflictReloadFailed:
+        'Chưa lưu: hồ sơ vừa được thay đổi ở nơi khác, và không tải lại được bản mới nhất. Vui lòng kiểm tra kết nối, đóng rồi mở lại hồ sơ.',
+      unknown:
+        'Không nhận được xác nhận khi lưu nên không chắc thay đổi đã được lưu. Đã tải lại hồ sơ: tên hiện tại là “{{name}}”. Hãy kiểm tra rồi bấm Lưu nếu vẫn muốn đổi.',
+      unknownReloadFailed:
+        'Không nhận được xác nhận khi lưu nên không chắc thay đổi đã được lưu, và chưa tải lại được hồ sơ. Vui lòng kiểm tra kết nối rồi mở lại hồ sơ.',
+      notSaved:
+        'Mất kết nối khi đang lưu. Đã kiểm tra lại: hồ sơ chưa thay đổi. Bấm Lưu để thử lại.',
+      saveFailed: 'Không lưu được hồ sơ. Vui lòng thử lại.',
+      notAllowed: 'Bạn không có quyền sửa hồ sơ này, hoặc phiên đăng nhập đã hết hạn.',
+      uploadNetwork: 'Không tải được ảnh lên do lỗi kết nối. Hồ sơ chưa thay đổi.',
+      uploadNotAllowed:
+        'Bạn không có quyền tải ảnh lên, hoặc phiên đăng nhập đã hết hạn. Hồ sơ chưa thay đổi.',
+      uploadTooLarge: 'Ảnh sau khi xử lý vẫn quá lớn để tải lên. Hồ sơ chưa thay đổi.',
+      uploadFailed: 'Không tải được ảnh lên. Hồ sơ chưa thay đổi; vui lòng thử lại.',
+      imageType: 'Chỉ dùng được ảnh JPG, PNG, WebP hoặc GIF.',
+      imageTooLarge: 'Ảnh quá lớn: tối đa {{maxMb}} MB và {{maxMegapixels}} megapixel.',
+      imageDecode: 'Không đọc được ảnh này. Hãy thử ảnh khác.',
+      imageEncode: 'Không xử lý được ảnh này. Hãy thử ảnh khác.',
+      imageUnsupported:
+        'Trình duyệt này không hỗ trợ xử lý ảnh. Hãy dùng phiên bản mới của Chrome, Edge, Firefox hoặc Safari.',
+    },
+  },
   auth: {
     loading: 'Đang tải…',
     logout: 'Đăng xuất',

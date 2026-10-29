@@ -88,6 +88,64 @@ export const en: Translation = {
       changeFailed: "Couldn't edit or recall the message. Please try again.",
     },
   },
+  profile: {
+    title: 'Profile',
+    open: 'Open your profile',
+    loadFailed: "Couldn't load your profile.",
+    close: 'Close',
+    changePhoto: 'Change photo',
+    removePhoto: 'Remove photo',
+    processingPhoto: 'Processing photo…',
+    photoHint:
+      'JPG, PNG, WebP or GIF, up to {{maxMb}} MB. The centre square is kept and scaled to 256×256.',
+    previewAlt: 'Preview of the new profile photo',
+    photoPending: 'New profile photo selected. Select Save to apply it.',
+    removePending: 'The profile photo will be removed when you select Save.',
+    usernameHint: 'The username cannot be changed.',
+    cancel: 'Cancel',
+    save: 'Save',
+    saving: 'Saving…',
+    savingWithPhoto: 'Uploading photo and saving…',
+    saved: 'Profile saved.',
+    nothingToSave: 'There are no changes to save.',
+    cleanup: {
+      oldNotConfirmed:
+        "Couldn't confirm that the old photo was deleted from the server; the file may still be there.",
+      oldFailed:
+        "Couldn't delete the old photo from the server (an error or a dropped connection); the file is still there.",
+      newNotConfirmed:
+        "Couldn't confirm that the photo just uploaded was deleted from the server; the file may still be there.",
+      newFailed:
+        "Couldn't delete the photo just uploaded from the server (an error or a dropped connection); the file is still there.",
+      newKept:
+        "The photo just uploaded was kept on the server, because it isn't known whether your profile uses it.",
+    },
+    errors: {
+      conflict:
+        'Not saved: your profile was just changed elsewhere. The latest version is loaded (current name: “{{name}}”). What you typed is kept; select Save if you still want to change it.',
+      conflictReloadFailed:
+        "Not saved: your profile was just changed elsewhere, and the latest version couldn't be loaded. Check your connection, then close and reopen your profile.",
+      unknown:
+        'Saving was not confirmed, so the change may or may not have been saved. Your profile was reloaded: the current name is “{{name}}”. Check it, then select Save if you still want to change it.',
+      unknownReloadFailed:
+        "Saving was not confirmed, so the change may or may not have been saved, and your profile couldn't be reloaded. Check your connection, then reopen your profile.",
+      notSaved:
+        'The connection dropped while saving. Checked again: your profile is unchanged. Select Save to try again.',
+      saveFailed: "Couldn't save your profile. Please try again.",
+      notAllowed: "You aren't allowed to change this profile, or your session has expired.",
+      uploadNetwork: "Couldn't upload the photo because of a connection problem. Your profile is unchanged.",
+      uploadNotAllowed:
+        "You aren't allowed to upload the photo, or your session has expired. Your profile is unchanged.",
+      uploadTooLarge: 'The processed photo is still too large to upload. Your profile is unchanged.',
+      uploadFailed: "Couldn't upload the photo. Your profile is unchanged; please try again.",
+      imageType: 'Only JPG, PNG, WebP or GIF images can be used.',
+      imageTooLarge: 'The image is too large: at most {{maxMb}} MB and {{maxMegapixels}} megapixels.',
+      imageDecode: "This image couldn't be read. Try another one.",
+      imageEncode: "This image couldn't be processed. Try another one.",
+      imageUnsupported:
+        "This browser can't process images. Use a recent version of Chrome, Edge, Firefox or Safari.",
+    },
+  },
   auth: {
     loading: 'Loading…',
     logout: 'Sign out',

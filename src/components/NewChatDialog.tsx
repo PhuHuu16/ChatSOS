@@ -207,7 +207,7 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
                       disabled={pending || added || (mode === 'group' && full)}
                       className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <Avatar id={profile.id} name={profile.displayName} />
+                      <Avatar id={profile.id} name={profile.displayName} avatarPath={profile.avatarPath} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{profile.displayName}</span>
                         <span className="block truncate text-sm text-slate-500">@{profile.username}</span>

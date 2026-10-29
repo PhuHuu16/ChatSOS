@@ -1,6 +1,7 @@
 // Files sent in chats: checking a picked file, uploading it to the private attachments
 // bucket, and the URLs used to show or download it.
 import { useEffect, useState } from 'react'
+import { createSignedUrlCache } from '../../lib/signedUrls'
 import { supabase } from '../../lib/supabase'
 import { insertAttachmentMessage, type ChatResult } from './api'
 import type { ChatErrorKey } from './chatErrors'
@@ -149,28 +150,7 @@ export async function sendAttachment(
 
 // Images sent from this tab, shown from memory instead of being downloaded again.
 const localUrls = new Map<string, string>()
-const signedUrls = new Map<string, { url: string; expiresAt: number }>()
-let queue: { path: string; resolve: (url: string | null) => void }[] = []
-let flushTimer: ReturnType<typeof setTimeout> | null = null
-
-// Signs every path requested in the same tick with one request.
-async function flushQueue() {
-  const batch = queue
-  queue = []
-  flushTimer = null
-  const paths = [...new Set(batch.map((item) => item.path))]
-  const response = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrls(paths, URL_LIFETIME_SECONDS)
-    .catch(() => ({ data: null }))
-  const expiresAt = Date.now() + (URL_LIFETIME_SECONDS - URL_REFRESH_MARGIN_SECONDS) * 1000
-  for (const item of response.data ?? []) {
-    if (item.path && item.signedUrl && !item.error) {
-      signedUrls.set(item.path, { url: item.signedUrl, expiresAt })
-    }
-  }
-  for (const { path, resolve } of batch) resolve(signedUrls.get(path)?.url ?? null)
-}
+const signedUrls = createSignedUrlCache(BUCKET, URL_LIFETIME_SECONDS, URL_REFRESH_MARGIN_SECONDS)
 
 // A URL that shows the attachment, or null when it cannot be read (e.g. it was never
 // uploaded). Storage answers "not found" both for missing files and for files the caller
@@ -178,12 +158,7 @@ async function flushQueue() {
 export function getAttachmentUrl(path: string): Promise<string | null> {
   const local = localUrls.get(path)
   if (local) return Promise.resolve(local)
-  const cached = signedUrls.get(path)
-  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.url)
-  return new Promise((resolve) => {
-    queue.push({ path, resolve })
-    flushTimer ??= setTimeout(() => void flushQueue(), 0)
-  })
+  return signedUrls.get(path)
 }
 
 // Shows the image picked for a message that is still being sent.
@@ -198,7 +173,7 @@ export async function removeAttachment(path: string): Promise<void> {
   const local = localUrls.get(path)
   if (local) URL.revokeObjectURL(local)
   localUrls.delete(path)
-  signedUrls.delete(path)
+  signedUrls.forget(path)
   await supabase.storage
     .from(BUCKET)
     .remove([path])

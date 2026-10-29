@@ -23,7 +23,10 @@ import { useChatQuery } from '../../features/chat/useChatQuery'
 import { clearAttachmentUrls, removeAttachment } from '../../features/chat/attachments'
 import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
 import { readKey, useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
+import { clearAvatarUrls } from '../../features/profile/avatars'
+import { fetchOwnProfile, type OwnProfile } from '../../features/profile/profileApi'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
+import { ProfileDialog } from '../ProfileDialog'
 import { ChatPanel } from './ChatPanel'
 import { Sidebar } from './Sidebar'
 
@@ -85,7 +88,22 @@ export function AppShell() {
     () => withUpdates([...(listData?.lastMessages ?? []), ...live], updates),
     [listData, live, updates],
   )
-  const users = listData?.users ?? []
+  // The user's own profile. A save or reload in the profile dialog replaces the loaded
+  // copy at once, and the new name shows everywhere without reloading the list.
+  const ownProfileQuery = useChatQuery(currentUserId, fetchOwnProfile)
+  const [ownProfileUpdate, setOwnProfileUpdate] = useState<OwnProfile | null>(null)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const ownProfile =
+    ownProfileUpdate ?? (ownProfileQuery.status === 'ready' ? ownProfileQuery.data : null)
+  const users = useMemo(() => {
+    const loaded = listData?.users ?? []
+    if (!ownProfileUpdate) return loaded
+    return loaded.map((user) =>
+      user.id === ownProfileUpdate.id
+        ? { ...user, displayName: ownProfileUpdate.displayName, avatarPath: ownProfileUpdate.avatarPath }
+        : user,
+    )
+  }, [listData, ownProfileUpdate])
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
   const messages = useChatQuery(selected?.id ?? null, fetchMessages)
 
@@ -172,6 +190,7 @@ export function AppShell() {
       document.removeEventListener('drop', keepFiles)
       // Signed URLs work for anyone who has them; forget them when the user leaves.
       clearAttachmentUrls()
+      clearAvatarUrls()
     }
   }, [])
 
@@ -241,6 +260,10 @@ export function AppShell() {
             onSignOut={() => void handleSignOut()}
             signingOut={signingOut}
             signOutFailed={signOutFailed}
+            profile={ownProfile}
+            profileFailed={ownProfileQuery.status === 'error'}
+            onRetryProfile={ownProfileQuery.reload}
+            onOpenProfile={() => setProfileOpen(true)}
           />
         </div>
         <main className={`${selected ? 'flex' : 'hidden md:flex'} min-w-0 flex-1`}>
@@ -274,6 +297,14 @@ export function AppShell() {
           currentUserId={currentUserId}
           onClose={() => setDialog(null)}
           onCreated={handleCreated}
+        />
+      )}
+      {profileOpen && ownProfile && (
+        <ProfileDialog
+          currentUserId={currentUserId}
+          profile={ownProfile}
+          onClose={() => setProfileOpen(false)}
+          onProfileUpdated={setOwnProfileUpdate}
         />
       )}
     </div>

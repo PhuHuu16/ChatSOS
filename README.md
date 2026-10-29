@@ -18,6 +18,10 @@ realtime dùng [Supabase](https://supabase.com). Giao diện tiếng Việt và 
 - Nhận tin mới tức thì (Supabase Realtime); mất kết nối thì báo và tự đồng bộ lại.
 - "Đang nhập…" khi người kia gõ, và "Đã gửi / Đã xem" dưới tin cuối của mình (nhóm hiện tên
   người đã xem). Chat và nhóm mới hiện ngay với người được thêm vào.
+- Hồ sơ cá nhân: đổi tên hiển thị và ảnh đại diện (ảnh được cắt vuông 256×256, bỏ
+  thông tin EXIF/GPS ngay trên trình duyệt). Ảnh hiện ở thanh bên, danh sách chat,
+  đầu khung chat riêng và kết quả tìm người; không có ảnh thì hiện chữ cái đầu.
+  Tên người dùng (`@username`) không đổi được.
 - Đếm tin chưa đọc; mở chat thì nhảy tới tin chưa đọc đầu tiên.
 - Xem 50 tin mới nhất, cuộn lên đầu để tải thêm tin cũ.
 - Lỗi bất ngờ hiện màn hình báo lỗi có nút tải lại, thay vì trang trắng.
@@ -39,7 +43,7 @@ React 19, TypeScript, Vite, Tailwind CSS v4, i18next, supabase-js
 
 ### 1. Database Supabase
 
-Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 7 file trong
+Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 8 file trong
 `supabase/migrations/`, mỗi lần một file, theo đúng thứ tự tên file:
 
 1. `20261016000100_profiles.sql`: hồ sơ người dùng.
@@ -49,6 +53,7 @@ Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 7 file trong
 5. `20261016000500_storage_realtime.sql`: bucket `attachments` (riêng tư) và Realtime.
 6. `20261028000100_edit_recall_messages.sql`: sửa và thu hồi tin (giới hạn 2 phút).
 7. `20261028000200_typing_and_read_receipts.sql`: kênh "đang nhập" riêng tư và "đã xem".
+8. `20261029000100_avatars.sql`: bucket `avatars` (riêng tư) cho ảnh đại diện.
 
 Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì. Sau đó chạy
 `supabase/tests/verify_schema.sql` (chỉ đọc); dòng `== ALL CHECKS PASSED ==` phải
@@ -56,6 +61,10 @@ là `true`.
 
 Kiểm tra thêm trong Dashboard: **Settings → Data API → Exposed schemas** không được
 có `private`.
+
+Muốn gỡ riêng phần ảnh đại diện (migration 8), làm theo hướng dẫn ở đầu file
+`supabase/rollbacks/20261029000100_avatars_rollback.sql`: script tự từ chối khi còn
+hồ sơ dùng ảnh hoặc bucket còn tệp, và không bao giờ xoá dữ liệu người dùng.
 
 ### 2. Biến môi trường
 
@@ -114,15 +123,23 @@ src/
   components/            giao diện dùng chung; layout/ là màn hình chat
   features/auth/         đăng ký, đăng nhập, phiên
   features/chat/         API tin nhắn, realtime, gửi tin, tệp đính kèm
+  features/profile/      hồ sơ: xử lý ảnh, lưu tên và ảnh đại diện
   i18n/                  bản dịch vi / en
-  lib/                   Supabase client và kiểm tra cấu hình
+  lib/                   Supabase client, kiểm tra cấu hình, link tệp có chữ ký
   routing/               định tuyến tối giản
 supabase/
   migrations/            schema, RLS, hàm, trigger, storage
+  rollbacks/             script gỡ migration (chạy tay, có điều kiện an toàn)
   tests/                 kiểm tra schema (chỉ đọc)
 ```
 
 ## Hạn chế đã biết
 
-- Ảnh hiển thị bằng tệp gốc, chưa có ảnh thu nhỏ.
+- Ảnh gửi trong chat hiển thị bằng tệp gốc, chưa có ảnh thu nhỏ.
 - Quá 2 phút thì không sửa hay thu hồi được tin nữa (có chủ đích).
+- Người khác chỉ thấy tên và ảnh đại diện mới khi danh sách chat của họ tải lại.
+- Ảnh đại diện không dùng nữa có thể còn lại trên Storage khi mất mạng lúc lưu hoặc
+  lúc xoá ảnh cũ (app báo rõ khi việc này xảy ra). Không có cơ chế tự dọn; xoá trong
+  **Dashboard → Storage → avatars**.
+- Ảnh đại diện chọn từ máy được giới hạn 20 MB và 40 megapixel; giới hạn này không
+  chặn được mọi ảnh cố tình làm trình duyệt tốn bộ nhớ khi giải mã.

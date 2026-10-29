@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CheckedFile } from '../../features/chat/attachments'
 import type { ChatErrorKey } from '../../features/chat/chatErrors'
-import { findUser, getConversationTitle } from '../../features/chat/helpers'
+import {
+  findUser,
+  getConversationAvatarPath,
+  getConversationTitle,
+} from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import type { PendingMessage } from '../../features/chat/useOutgoingMessages'
@@ -133,7 +137,11 @@ export function ChatPanel({
         >
           <span aria-hidden="true">←</span>
         </button>
-        <Avatar id={conversation.id} name={title} />
+        <Avatar
+          id={conversation.id}
+          name={title}
+          avatarPath={getConversationAvatarPath(conversation, users, currentUserId)}
+        />
         <div className="min-w-0">
           <h2 className="truncate font-semibold">{title}</h2>
           <p className="text-sm text-slate-500">

@@ -183,14 +183,18 @@ export async function fetchConversationList(
   const userIds = [...new Set(membersResponse.data.map((member) => member.user_id))]
   const profileResponses = await Promise.all(
     chunk(userIds, PROFILE_BATCH_SIZE).map((ids) =>
-      supabase.from('profiles').select('id, display_name').in('id', ids),
+      supabase.from('profiles').select('id, display_name, avatar_path').in('id', ids),
     ),
   )
   const users: User[] = []
   for (const response of profileResponses) {
     if (response.error) return fail(response, 'load')
     for (const profile of response.data) {
-      users.push({ id: profile.id, displayName: profile.display_name })
+      users.push({
+        id: profile.id,
+        displayName: profile.display_name,
+        avatarPath: profile.avatar_path,
+      })
     }
   }
 
@@ -421,7 +425,7 @@ export async function searchProfiles(
   const pattern = `${query.replace(/_/g, '\\_')}%`
   const response = await supabase
     .from('profiles')
-    .select('id, username, display_name')
+    .select('id, username, display_name, avatar_path')
     .ilike('username', pattern)
     .neq('id', excludeUserId)
     .order('username')
@@ -433,6 +437,7 @@ export async function searchProfiles(
       id: row.id,
       username: row.username,
       displayName: row.display_name,
+      avatarPath: row.avatar_path,
     })),
   }
 }

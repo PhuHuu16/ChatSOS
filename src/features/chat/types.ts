@@ -4,6 +4,8 @@ export type MessageKind = 'text' | 'image' | 'file'
 export interface User {
   id: string
   displayName: string
+  // "<user id>/<uuid>.jpg" in the private avatars bucket, or null when there is none.
+  avatarPath: string | null
 }
 
 // A user found by username search, e.g. when starting a chat.

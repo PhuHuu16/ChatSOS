@@ -1,5 +1,6 @@
--- ChatSOS · read-only verification. Run after all 7 migrations (the 5 of Phase 1,
--- 20261028000100_edit_recall_messages.sql and 20261028000200_typing_and_read_receipts.sql).
+-- ChatSOS · read-only verification. Run after all 8 migrations (the 5 of Phase 1,
+-- 20261028000100_edit_recall_messages.sql, 20261028000200_typing_and_read_receipts.sql
+-- and 20261029000100_avatars.sql).
 -- A single SELECT: it changes nothing. Failing checks are listed first, and the
 -- "== ALL CHECKS PASSED ==" row is true only when every check passed.
 --
@@ -100,7 +101,9 @@ expected_functions (signature, authenticated_can_execute) as (
     ('private.touch_conversation()', false),
     ('private.guard_message_update()', false),
     ('private.attachment_unused(text)', true),
-    ('private.can_use_typing_topic(text)', true)
+    ('private.can_use_typing_topic(text)', true),
+    ('private.avatar_in_use(text)', true),
+    ('private.validate_profile_avatar()', false)
 ),
 functions as (
   select e.signature, e.authenticated_can_execute, p.oid, p.prosecdef, p.proconfig, p.proacl
@@ -154,6 +157,17 @@ expected_policies (schema_name, table_name, policy_name, command, expected_using
       '((extension = ''broadcast''::text) AND private.can_use_typing_topic(( SELECT realtime.topic() AS topic)))'),
     ('storage', 'objects', 'attachments: uploaders delete unused files', 'DELETE',
       '((bucket_id = ''attachments''::text) AND (owner_id = (( SELECT auth.uid() AS uid))::text) AND private.attachment_unused(name))',
+      null::text),
+    -- Avatars (migration 8). Written in the same printed form as the rows above; not yet
+    -- captured from the deployed schema, so compare the detail column if one fails.
+    ('storage', 'objects', 'avatars: read avatars in use or own files', 'SELECT',
+      '((bucket_id = ''avatars''::text) AND (private.avatar_in_use(name) OR ((owner_id = (( SELECT auth.uid() AS uid))::text) AND (split_part(name, ''/''::text, 1) = (( SELECT auth.uid() AS uid))::text))))',
+      null::text),
+    ('storage', 'objects', 'avatars: users upload to their own folder', 'INSERT',
+      null::text,
+      '((bucket_id = ''avatars''::text) AND (char_length(name) = 77) AND (name ~ ''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$''::text) AND (split_part(name, ''/''::text, 1) = (( SELECT auth.uid() AS uid))::text))'),
+    ('storage', 'objects', 'avatars: owners delete unused files', 'DELETE',
+      '((bucket_id = ''avatars''::text) AND (owner_id = (( SELECT auth.uid() AS uid))::text) AND (split_part(name, ''/''::text, 1) = (( SELECT auth.uid() AS uid))::text) AND (NOT private.avatar_in_use(name)))',
       null::text)
 ),
 expected_constraints (table_name, constraint_name) as (
@@ -316,7 +330,7 @@ checks (name, ok, detail) as (
       select count(*)
       from pg_catalog.pg_proc p
       where p.pronamespace = 'private'::regnamespace
-    ) = 7,
+    ) = 9,
     (
       select 'found: ' || coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.proname), 'none')
       from pg_catalog.pg_proc p
@@ -413,14 +427,15 @@ checks (name, ok, detail) as (
   union all
   -- Every policy on storage.objects, whatever bucket or expression it uses: a policy
   -- applies to all buckets unless it filters bucket_id itself, so any extra one
-  -- (e.g. "using (true)") could expose attachments. Only the 3 expected may exist.
+  -- (e.g. "using (true)") could expose attachments. Only the 6 expected may exist
+  -- (3 for attachments, 3 for avatars).
   select
-    'exactly 3 policies on storage.objects (all buckets), all expected',
+    'exactly 6 policies on storage.objects (all buckets), all expected',
     (
       select count(*)
       from pg_catalog.pg_policies p
       where p.schemaname = 'storage' and p.tablename = 'objects'
-    ) = 3
+    ) = 6
     and not exists (
       select 1
       from pg_catalog.pg_policies p
@@ -445,6 +460,20 @@ checks (name, ok, detail) as (
       )
       from pg_catalog.pg_policies p
       where p.schemaname = 'storage' and p.tablename = 'objects'
+    )
+  union all
+  -- No bucket may let clients overwrite files: upsert needs an UPDATE policy.
+  select
+    'no UPDATE or ALL policy on storage.objects',
+    not exists (
+      select 1
+      from pg_catalog.pg_policies p
+      where p.schemaname = 'storage' and p.tablename = 'objects' and p.cmd in ('UPDATE', 'ALL')
+    ),
+    (
+      select 'found: ' || string_agg(format('%s (%s)', p.policyname, p.cmd), '; ')
+      from pg_catalog.pg_policies p
+      where p.schemaname = 'storage' and p.tablename = 'objects' and p.cmd in ('UPDATE', 'ALL')
     )
 
   union all
@@ -499,9 +528,28 @@ checks (name, ok, detail) as (
       where b.id = 'attachments'
     ), false),
     null
+  union all
+  select
+    'bucket avatars exists and is private',
+    exists (select 1 from storage.buckets b where b.id = 'avatars' and b.public = false),
+    null
+  union all
+  select
+    'bucket avatars file_size_limit = 1 MiB',
+    exists (select 1 from storage.buckets b where b.id = 'avatars' and b.file_size_limit = 1048576),
+    (select 'actual: ' || coalesce(b.file_size_limit::text, 'none') from storage.buckets b where b.id = 'avatars')
+  union all
+  select
+    'bucket avatars allowed_mime_types = {image/jpeg}',
+    exists (
+      select 1
+      from storage.buckets b
+      where b.id = 'avatars' and b.allowed_mime_types = array['image/jpeg']::text[]
+    ),
+    (select 'actual: ' || coalesce(b.allowed_mime_types::text, 'none') from storage.buckets b where b.id = 'avatars')
 
   union all
-  -- Columns the attachment trigger relies on
+  -- Columns the attachment and avatar triggers rely on
   select
     'storage.objects has column ' || col,
     exists (
@@ -510,7 +558,7 @@ checks (name, ok, detail) as (
       where c.table_schema = 'storage' and c.table_name = 'objects' and c.column_name = col
     ),
     null
-  from unnest(array['owner_id', 'metadata', 'bucket_id', 'name']) as col
+  from unnest(array['owner_id', 'metadata', 'bucket_id', 'name', 'is_delete_marker']) as col
 
   union all
   -- Triggers present and enabled
@@ -529,8 +577,67 @@ checks (name, ok, detail) as (
       ('on_auth_user_created', 'auth.users'),
       ('messages_validate_attachment', 'public.messages'),
       ('messages_touch_conversation', 'public.messages'),
-      ('messages_guard_update', 'public.messages')
+      ('messages_guard_update', 'public.messages'),
+      ('profiles_validate_avatar', 'public.profiles')
   ) as t (trigger_name, table_name)
+  union all
+  -- The avatar trigger: exact timing, events, column and function.
+  select
+    'trigger definition: profiles_validate_avatar',
+    exists (
+      select 1
+      from pg_catalog.pg_trigger g
+      where g.tgrelid = to_regclass('public.profiles')
+        and g.tgname = 'profiles_validate_avatar'
+        and pg_get_triggerdef(g.oid) = 'CREATE TRIGGER profiles_validate_avatar BEFORE INSERT OR UPDATE OF avatar_path ON public.profiles FOR EACH ROW EXECUTE FUNCTION private.validate_profile_avatar()'
+    ),
+    (
+      select 'actual: ' || pg_get_triggerdef(g.oid)
+      from pg_catalog.pg_trigger g
+      where g.tgrelid = to_regclass('public.profiles') and g.tgname = 'profiles_validate_avatar'
+    )
+  union all
+  -- The avatar functions still contain the conditions the security model relies on.
+  select
+    'function body: private.validate_profile_avatar() ' || frag.label,
+    coalesce((
+      select position(frag.needle in p.prosrc) > 0
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure('private.validate_profile_avatar()')
+    ), false),
+    null
+  from (
+    values
+      ('reads bucket avatars', 'o.bucket_id = ''avatars'''),
+      ('reads the exact object', 'o.name = new.avatar_path'),
+      ('skips delete markers', 'coalesce(o.is_delete_marker, false) = false'),
+      ('rejects a missing file', 'if not found then'),
+      ('checks the owner', 'v_owner is distinct from new.id::text'),
+      ('checks the MIME type', '''image/jpeg'''),
+      ('checks the size limit', 'v_size > 1048576'),
+      ('checks the path length', 'char_length(new.avatar_path) = 77'),
+      ('checks the path pattern', 'new.avatar_path ~ ''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$'''),
+      ('checks the own folder', 'split_part(new.avatar_path, ''/'', 1) = new.id::text')
+  ) as frag (label, needle)
+  union all
+  select
+    'function body: private.avatar_in_use(text) checks every profile',
+    coalesce((
+      select position('from public.profiles p' in p.prosrc) > 0
+        and position('p.avatar_path = p_object_name' in p.prosrc) > 0
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure('private.avatar_in_use(text)')
+    ), false),
+    null
+  union all
+  select
+    'unique index profiles_avatar_path_key',
+    coalesce(
+      pg_get_indexdef(to_regclass('public.profiles_avatar_path_key'))
+        = 'CREATE UNIQUE INDEX profiles_avatar_path_key ON public.profiles USING btree (avatar_path)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_indexdef(to_regclass('public.profiles_avatar_path_key')), 'none')
 
   union all
   -- Realtime publication (necessary, not sufficient; delivery is tested end to end)
