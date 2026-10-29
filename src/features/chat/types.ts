@@ -25,6 +25,9 @@ export interface Conversation {
   lastReadAt: string | null
   // Every member's read marker when the list loaded, by user id (null = none read).
   memberReadAt: Readonly<Record<string, string | null>>
+  // ISO 8601: when the current user deleted this conversation's history for themselves.
+  // Messages up to then are hidden from them. null = never.
+  clearedAt: string | null
 }
 
 // A member's read marker, as Realtime reports it.

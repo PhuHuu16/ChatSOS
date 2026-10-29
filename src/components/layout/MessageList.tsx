@@ -4,6 +4,7 @@ import {
   fetchMessagesBefore,
   MESSAGE_CHANGE_WINDOW_MS,
   MESSAGE_PAGE_SIZE,
+  MESSAGE_SELECT_LIMIT,
   type ChatResult,
 } from '../../features/chat/api'
 import type { ChatErrorKey } from '../../features/chat/chatErrors'
@@ -14,6 +15,7 @@ import {
   readersOf,
   timestampMicros,
   withLiveMessages,
+  withoutHidden,
   withUpdates,
 } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
@@ -48,6 +50,13 @@ interface MessageListProps {
   changingId: string | null
   onStartEdit: (message: Message) => void
   onRecall: (message: Message) => void
+  // Messages the user deleted for themselves in this session; the server leaves them out
+  // of every later load.
+  hidden: ReadonlySet<string>
+  // The selected message ids while selecting, null otherwise.
+  selectedIds: ReadonlySet<string> | null
+  // Starts selecting with `message`, or adds or removes it.
+  onToggleSelect: (message: Message) => void
   onRetry: (message: PendingMessage) => void
   onDiscard: (message: PendingMessage) => void
   // The user has seen the conversation up to the message created at `readAt`.
@@ -99,6 +108,9 @@ export function MessageList({
   changingId,
   onStartEdit,
   onRecall,
+  hidden,
+  selectedIds,
+  onToggleSelect,
   onRetry,
   onDiscard,
   onRead,
@@ -140,8 +152,13 @@ export function MessageList({
   const loaded = latestData ? mergeMessages(older.messages, latestData) : null
   const hasMore = older.hasMore ?? (latestData ? latestData.length >= MESSAGE_PAGE_SIZE : false)
   const shown = loaded
-    ? withUpdates(withLiveMessages(loaded, live, conversation.id, !hasMore), updates)
+    ? withoutHidden(
+        withUpdates(withLiveMessages(loaded, live, conversation.id, !hasMore), updates),
+        hidden,
+      )
     : []
+  const selecting = selectedIds !== null
+  const selectFull = (selectedIds?.size ?? 0) >= MESSAGE_SELECT_LIMIT
   // Realtime can deliver the user's own message before the send request returns.
   const shownIds = new Set(shown.map((message) => message.id))
   const pendingHere = pending.filter(
@@ -361,13 +378,72 @@ export function MessageList({
             const recalled = message.deletedAt !== null
             const canChange =
               isMine && !recalled && now - Date.parse(message.createdAt) < MESSAGE_CHANGE_WINDOW_MS
-            const menuOpen = canChange && menuFor === message.id
+            const selected = selectedIds?.has(message.id) ?? false
+            const menuOpen = !selecting && menuFor === message.id
             const highlight =
               message.id === editingId
                 ? 'ring-2 ring-brand-500'
                 : message.id === changingId
                   ? 'opacity-60'
                   : ''
+            // Every sent message can be selected; own ones can also be changed for a while.
+            // Shown before own messages and after the others', on the side facing the middle.
+            const actions = !selecting && (
+              <div className="flex shrink-0 items-center gap-1 text-xs">
+                {menuOpen && (
+                  <>
+                    {canChange && message.kind === 'text' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuFor(null)
+                          onStartEdit(message)
+                        }}
+                        className={ACTION_BUTTON_CLASS}
+                      >
+                        {t('chat.edit')}
+                      </button>
+                    )}
+                    {canChange && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuFor(null)
+                          onRecall(message)
+                        }}
+                        className={ACTION_BUTTON_CLASS}
+                      >
+                        {t('chat.recall')}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuFor(null)
+                        onToggleSelect(message)
+                      }}
+                      className={ACTION_BUTTON_CLASS}
+                    >
+                      {t('chat.select')}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  aria-label={t('chat.messageActions')}
+                  aria-expanded={menuOpen}
+                  disabled={message.id === changingId}
+                  onClick={() => setMenuFor(menuOpen ? null : message.id)}
+                  className={`${ACTION_BUTTON_CLASS} text-base leading-none ${
+                    menuOpen
+                      ? ''
+                      : 'md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
+                  }`}
+                >
+                  <span aria-hidden="true">⋯</span>
+                </button>
+              </div>
+            )
 
             return (
               <Fragment key={message.id}>
@@ -382,54 +458,31 @@ export function MessageList({
                 )}
                 <li
                   data-message-id={message.id}
-                  className={`group flex items-center gap-1 ${isMine ? 'justify-end' : 'justify-start'}`}
+                  // While selecting, a click anywhere on the row toggles it; the checkbox is
+                  // the keyboard and screen reader way to do the same.
+                  onClick={selecting ? () => onToggleSelect(message) : undefined}
+                  className={`group flex items-center gap-1 ${isMine ? 'justify-end' : 'justify-start'} ${
+                    selecting ? 'cursor-pointer rounded-lg' : ''
+                  } ${selected ? 'bg-brand-50' : ''}`}
                 >
-                  {canChange && (
-                    <div className="flex shrink-0 items-center gap-1 text-xs">
-                      {menuOpen && (
-                        <>
-                          {message.kind === 'text' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMenuFor(null)
-                                onStartEdit(message)
-                              }}
-                              className={ACTION_BUTTON_CLASS}
-                            >
-                              {t('chat.edit')}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuFor(null)
-                              onRecall(message)
-                            }}
-                            className={ACTION_BUTTON_CLASS}
-                          >
-                            {t('chat.recall')}
-                          </button>
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        aria-label={t('chat.messageActions')}
-                        aria-expanded={menuOpen}
-                        disabled={message.id === changingId}
-                        onClick={() => setMenuFor(menuOpen ? null : message.id)}
-                        className={`${ACTION_BUTTON_CLASS} text-base leading-none ${
-                          menuOpen
-                            ? ''
-                            : 'md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
-                        }`}
-                      >
-                        <span aria-hidden="true">⋯</span>
-                      </button>
-                    </div>
+                  {selecting && (
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={!selected && selectFull}
+                      onChange={() => onToggleSelect(message)}
+                      // The row's own click handler would toggle it a second time.
+                      onClick={(event) => event.stopPropagation()}
+                      aria-label={t('chat.selectMessage')}
+                      className={`m-2 size-4 shrink-0 accent-brand-500 ${isMine ? 'mr-auto' : ''}`}
+                    />
                   )}
+                  {isMine && actions}
                   <div
-                    className={`${BUBBLE_CLASS} ${isMine ? MINE_CLASS : 'rounded-bl-sm bg-slate-100'} ${highlight}`}
+                    className={`${BUBBLE_CLASS} ${isMine ? MINE_CLASS : 'rounded-bl-sm bg-slate-100'} ${highlight} ${
+                      // Links and buttons inside must not act while the row is a checkbox.
+                      selecting ? 'pointer-events-none' : ''
+                    }`}
                   >
                     {senderName && (
                       <p className="mb-0.5 text-xs font-semibold text-brand-700">{senderName}</p>
@@ -457,6 +510,7 @@ export function MessageList({
                       </time>
                     </p>
                   </div>
+                  {!isMine && actions}
                 </li>
               </Fragment>
             )

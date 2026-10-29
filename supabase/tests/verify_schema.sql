@@ -1,6 +1,6 @@
--- ChatSOS · read-only verification. Run after all 8 migrations (the 5 of Phase 1,
--- 20261028000100_edit_recall_messages.sql, 20261028000200_typing_and_read_receipts.sql
--- and 20261029000100_avatars.sql).
+-- ChatSOS · read-only verification. Run after all 9 migrations (the 5 of Phase 1,
+-- 20261028000100_edit_recall_messages.sql, 20261028000200_typing_and_read_receipts.sql,
+-- 20261029000100_avatars.sql and 20261030000100_delete_messages_and_conversations.sql).
 -- A single SELECT: it changes nothing. Failing checks are listed first, and the
 -- "== ALL CHECKS PASSED ==" row is true only when every check passed.
 --
@@ -10,7 +10,13 @@
 
 with
 target_tables (table_name) as (
-  values ('profiles'), ('conversations'), ('conversation_members'), ('messages')
+  values
+    ('profiles'),
+    ('conversations'),
+    ('conversation_members'),
+    ('messages'),
+    ('message_hides'),
+    ('conversation_clears')
 ),
 target_roles (role_name) as (
   values ('anon'), ('authenticated')
@@ -39,7 +45,10 @@ allowed_privileges (role_name, table_name, privilege, column_name) as (
     ('authenticated', 'messages', 'INSERT', 'attachment_size'),
     ('authenticated', 'messages', 'INSERT', 'attachment_mime'),
     ('authenticated', 'messages', 'UPDATE', 'content'),
-    ('authenticated', 'messages', 'UPDATE', 'deleted_at')
+    ('authenticated', 'messages', 'UPDATE', 'deleted_at'),
+    ('authenticated', 'message_hides', 'SELECT', null),
+    ('authenticated', 'message_hides', 'INSERT', 'message_id'),
+    ('authenticated', 'conversation_clears', 'SELECT', null)
 ),
 -- Every table-level privilege, for every role and table.
 table_privilege_matrix as (
@@ -103,7 +112,9 @@ expected_functions (signature, authenticated_can_execute) as (
     ('private.attachment_unused(text)', true),
     ('private.can_use_typing_topic(text)', true),
     ('private.avatar_in_use(text)', true),
-    ('private.validate_profile_avatar()', false)
+    ('private.validate_profile_avatar()', false),
+    ('public.clear_conversation(uuid)', true),
+    ('private.can_hide_message(uuid)', true)
 ),
 functions as (
   select e.signature, e.authenticated_can_execute, p.oid, p.prosecdef, p.proconfig, p.proacl
@@ -134,8 +145,10 @@ expected_policies (schema_name, table_name, policy_name, command, expected_using
     ('public', 'conversation_members', 'conversation_members: users update their own read marker', 'UPDATE',
       '(user_id = ( SELECT auth.uid() AS uid))',
       '(user_id = ( SELECT auth.uid() AS uid))'),
-    ('public', 'messages', 'messages: members can read', 'SELECT',
-      'private.is_member(conversation_id)',
+    -- Replaced in migration 9: "members can read", minus the messages the caller hid and
+    -- those up to when the caller cleared the conversation.
+    ('public', 'messages', 'messages: members read what they have not deleted', 'SELECT',
+      E'(private.is_member(conversation_id) AND (NOT (EXISTS ( SELECT 1\n   FROM message_hides h\n  WHERE ((h.message_id = messages.id) AND (h.user_id = ( SELECT auth.uid() AS uid)))))) AND (NOT (EXISTS ( SELECT 1\n   FROM conversation_clears c\n  WHERE ((c.conversation_id = messages.conversation_id) AND (c.user_id = ( SELECT auth.uid() AS uid)) AND (messages.created_at <= c.cleared_at))))))',
       null::text),
     ('public', 'messages', 'messages: members send as themselves', 'INSERT',
       null::text,
@@ -168,6 +181,17 @@ expected_policies (schema_name, table_name, policy_name, command, expected_using
       '((bucket_id = ''avatars''::text) AND (char_length(name) = 77) AND (name ~ ''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$''::text) AND (split_part(name, ''/''::text, 1) = (( SELECT auth.uid() AS uid))::text))'),
     ('storage', 'objects', 'avatars: owners delete unused files', 'DELETE',
       '((bucket_id = ''avatars''::text) AND (owner_id = (( SELECT auth.uid() AS uid))::text) AND (split_part(name, ''/''::text, 1) = (( SELECT auth.uid() AS uid))::text) AND (NOT private.avatar_in_use(name)))',
+      null::text),
+    -- Migration 9. Written in the same printed form; not yet captured from the deployed
+    -- schema, so compare the detail column if one fails.
+    ('public', 'message_hides', 'message_hides: users read their own', 'SELECT',
+      '(user_id = ( SELECT auth.uid() AS uid))',
+      null::text),
+    ('public', 'message_hides', 'message_hides: members hide messages for themselves', 'INSERT',
+      null::text,
+      '((user_id = ( SELECT auth.uid() AS uid)) AND private.can_hide_message(message_id))'),
+    ('public', 'conversation_clears', 'conversation_clears: users read their own', 'SELECT',
+      '(user_id = ( SELECT auth.uid() AS uid))',
       null::text)
 ),
 expected_constraints (table_name, constraint_name) as (
@@ -330,7 +354,7 @@ checks (name, ok, detail) as (
       select count(*)
       from pg_catalog.pg_proc p
       where p.pronamespace = 'private'::regnamespace
-    ) = 9,
+    ) = 10,
     (
       select 'found: ' || coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.proname), 'none')
       from pg_catalog.pg_proc p
@@ -411,13 +435,13 @@ checks (name, ok, detail) as (
   from expected_policies e
   union all
   select
-    'exactly 8 policies on ChatSOS tables',
+    'exactly 11 policies on ChatSOS tables',
     (
       select count(*)
       from pg_catalog.pg_policies p
       where p.schemaname = 'public'
         and p.tablename in (select table_name from target_tables)
-    ) = 8,
+    ) = 11,
     (
       select 'count: ' || count(*)
       from pg_catalog.pg_policies p
@@ -652,6 +676,82 @@ checks (name, ok, detail) as (
     ),
     null
   from (values ('messages'), ('conversation_members')) as t (table_name)
+  union all
+  -- Supabase does not check RLS for DELETE events, so none may be published.
+  select
+    'publication supabase_realtime publishes insert and update, not delete',
+    exists (
+      select 1
+      from pg_catalog.pg_publication p
+      where p.pubname = 'supabase_realtime' and p.pubinsert and p.pubupdate and not p.pubdelete
+    ),
+    (
+      select format('insert=%s update=%s delete=%s truncate=%s', p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate)
+      from pg_catalog.pg_publication p
+      where p.pubname = 'supabase_realtime'
+    )
+
+  union all
+  -- Hides disappear with their message and with their user.
+  select
+    'message_hides foreign keys cascade on delete (messages, profiles)',
+    (
+      select count(*)
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.message_hides')
+        and k.contype = 'f'
+        and k.confdeltype = 'c'
+        and k.confrelid in (to_regclass('public.messages'), to_regclass('public.profiles'))
+    ) = 2,
+    null
+  union all
+  select
+    'primary key message_hides (user_id, message_id)',
+    coalesce(
+      pg_get_indexdef(to_regclass('public.message_hides_pkey'))
+        = 'CREATE UNIQUE INDEX message_hides_pkey ON public.message_hides USING btree (user_id, message_id)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_indexdef(to_regclass('public.message_hides_pkey')), 'none')
+  union all
+  -- Clears disappear with their conversation and with their user.
+  select
+    'conversation_clears foreign keys cascade on delete (conversations, profiles)',
+    (
+      select count(*)
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.conversation_clears')
+        and k.contype = 'f'
+        and k.confdeltype = 'c'
+        and k.confrelid in (to_regclass('public.conversations'), to_regclass('public.profiles'))
+    ) = 2,
+    null
+  union all
+  select
+    'primary key conversation_clears (user_id, conversation_id)',
+    coalesce(
+      pg_get_indexdef(to_regclass('public.conversation_clears_pkey'))
+        = 'CREATE UNIQUE INDEX conversation_clears_pkey ON public.conversation_clears USING btree (user_id, conversation_id)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_indexdef(to_regclass('public.conversation_clears_pkey')), 'none')
+  union all
+  -- clear_conversation still contains the conditions the security model relies on.
+  select
+    'function body: public.clear_conversation(uuid) ' || frag.label,
+    coalesce((
+      select position(frag.needle in p.prosrc) > 0
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure('public.clear_conversation(uuid)')
+    ), false),
+    null
+  from (
+    values
+      ('checks the caller is a member', 'm.user_id = v_me'),
+      ('same error for not a member and not found', 'errcode = ''P0002'''),
+      ('writes only for the caller, with the server clock', 'values (v_me, p_conversation_id, now())'),
+      ('never moves the mark back', 'greatest(public.conversation_clears.cleared_at, excluded.cleared_at)')
+  ) as frag (label, needle)
 )
 select name, ok, detail
 from (

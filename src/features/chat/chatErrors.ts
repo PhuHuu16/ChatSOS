@@ -3,7 +3,7 @@ import type { Translation } from '../../i18n/locales/vi'
 type ChatErrorName = keyof Translation['chat']['errors']
 export type ChatErrorKey = `chat.errors.${ChatErrorName}`
 
-export type ChatAction = 'load' | 'send' | 'create' | 'change'
+export type ChatAction = 'load' | 'send' | 'create' | 'change' | 'delete'
 
 // Raised by the messages_guard_update trigger once a message is too old to change.
 const CHANGE_WINDOW_PASSED = 'CS001'
@@ -23,5 +23,6 @@ export function toChatErrorKey(
     return code === CHANGE_WINDOW_PASSED ? 'chat.errors.changeExpired' : 'chat.errors.changeFailed'
   }
   if (action === 'create') return 'chat.errors.createFailed'
+  if (action === 'delete') return 'chat.errors.deleteFailed'
   return action === 'load' ? 'chat.errors.loadFailed' : 'chat.errors.sendFailed'
 }

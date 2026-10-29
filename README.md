@@ -13,8 +13,13 @@ realtime dùng [Supabase](https://supabase.com). Giao diện tiếng Việt và 
 - Gửi ảnh (JPG, PNG, WebP, GIF) và tệp (PDF, TXT, ZIP, DOCX, XLSX, PPTX), tối đa
   20 MB: bằng nút 📎, dán (Ctrl+V) hoặc kéo thả. Ảnh xem ngay trong chat, tệp tải về
   giữ đúng tên gốc.
-- Sửa tin văn bản và thu hồi tin (cả ảnh/tệp) trong 2 phút sau khi gửi; người kia thấy
-  ngay. Tin thu hồi bị xoá nội dung trên server, ảnh/tệp bị xoá khỏi Storage.
+- Sửa tin văn bản trong 2 phút sau khi gửi; người kia thấy ngay.
+- Xoá tin: chọn một hoặc nhiều tin (tối đa 100) rồi chọn "Xoá ở phía tôi" (chỉ mất với
+  mình, người khác vẫn thấy) hoặc "Xoá với mọi người" (chỉ tin của mình, trong 2 phút
+  sau khi gửi; ai cũng thấy "Tin nhắn này đã bị xoá", nội dung bị xoá trên server,
+  ảnh/tệp bị xoá khỏi Storage).
+- Xoá cuộc trò chuyện (nút ⋯ ở mỗi dòng chat): lịch sử chỉ bị xoá ở phía mình, người
+  khác vẫn giữ. Khi có tin mới, cuộc trò chuyện hiện lại, chỉ với các tin từ lúc đó.
 - Nhận tin mới tức thì (Supabase Realtime); mất kết nối thì báo và tự đồng bộ lại.
 - "Đang nhập…" khi người kia gõ, và "Đã gửi / Đã xem" dưới tin cuối của mình (nhóm hiện tên
   người đã xem). Chat và nhóm mới hiện ngay với người được thêm vào.
@@ -43,7 +48,7 @@ React 19, TypeScript, Vite, Tailwind CSS v4, i18next, supabase-js
 
 ### 1. Database Supabase
 
-Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 8 file trong
+Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 9 file trong
 `supabase/migrations/`, mỗi lần một file, theo đúng thứ tự tên file:
 
 1. `20261016000100_profiles.sql`: hồ sơ người dùng.
@@ -54,6 +59,8 @@ Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 8 file trong
 6. `20261028000100_edit_recall_messages.sql`: sửa và thu hồi tin (giới hạn 2 phút).
 7. `20261028000200_typing_and_read_receipts.sql`: kênh "đang nhập" riêng tư và "đã xem".
 8. `20261029000100_avatars.sql`: bucket `avatars` (riêng tư) cho ảnh đại diện.
+9. `20261030000100_delete_messages_and_conversations.sql`: xoá tin và xoá lịch sử cuộc
+   trò chuyện ở phía mình; Realtime không còn gửi sự kiện DELETE.
 
 Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì. Sau đó chạy
 `supabase/tests/verify_schema.sql` (chỉ đọc); dòng `== ALL CHECKS PASSED ==` phải
@@ -65,6 +72,10 @@ có `private`.
 Muốn gỡ riêng phần ảnh đại diện (migration 8), làm theo hướng dẫn ở đầu file
 `supabase/rollbacks/20261029000100_avatars_rollback.sql`: script tự từ chối khi còn
 hồ sơ dùng ảnh hoặc bucket còn tệp, và không bao giờ xoá dữ liệu người dùng.
+
+Tương tự, `supabase/rollbacks/20261030000100_delete_messages_and_conversations_rollback.sql`
+gỡ migration 9. Script tự từ chối khi còn tin đã ẩn hoặc mốc xoá lịch sử, vì gỡ đi thì
+những tin người dùng đã xoá sẽ hiện lại với họ.
 
 ### 2. Biến môi trường
 
@@ -136,7 +147,11 @@ supabase/
 ## Hạn chế đã biết
 
 - Ảnh gửi trong chat hiển thị bằng tệp gốc, chưa có ảnh thu nhỏ.
-- Quá 2 phút thì không sửa hay thu hồi được tin nữa (có chủ đích).
+- Quá 2 phút thì không sửa hay xoá tin với mọi người được nữa (có chủ đích).
+- "Xoá ở phía tôi" và xoá cuộc trò chuyện không hoàn tác được. Ở tab hoặc thiết bị khác
+  của cùng tài khoản, tin hay cuộc trò chuyện vừa xoá chỉ biến mất sau khi tải lại.
+- Không có chức năng xoá hẳn cuộc trò chuyện hay rời nhóm; muốn xoá hẳn phải dùng
+  **Dashboard**.
 - Người khác chỉ thấy tên và ảnh đại diện mới khi danh sách chat của họ tải lại.
 - Ảnh đại diện không dùng nữa có thể còn lại trên Storage khi mất mạng lúc lưu hoặc
   lúc xoá ảnh cũ (app báo rõ khi việc này xảy ra). Không có cơ chế tự dọn; xoá trong

@@ -88,6 +88,31 @@ export type Database = {
         }
         Relationships: []
       }
+      message_hides: {
+        Row: {
+          user_id: string
+          message_id: string
+          hidden_at: string
+        }
+        // user_id and hidden_at are not granted: they always take their defaults.
+        Insert: {
+          message_id: string
+        }
+        // Hiding is final: no UPDATE or DELETE privilege.
+        Update: never
+        Relationships: []
+      }
+      conversation_clears: {
+        Row: {
+          user_id: string
+          conversation_id: string
+          cleared_at: string
+        }
+        // Read only: rows are written by clear_conversation().
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -99,6 +124,10 @@ export type Database = {
       }
       create_group_conversation: {
         Args: { p_title: string; p_member_ids: string[] }
+        Returns: string
+      }
+      clear_conversation: {
+        Args: { p_conversation_id: string }
         Returns: string
       }
     }

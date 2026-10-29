@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MESSAGE_SELECT_LIMIT } from '../../features/chat/api'
 import type { CheckedFile } from '../../features/chat/attachments'
 import type { ChatErrorKey } from '../../features/chat/chatErrors'
 import {
   findUser,
   getConversationAvatarPath,
   getConversationTitle,
+  withUpdates,
 } from '../../features/chat/helpers'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
@@ -13,6 +15,7 @@ import type { PendingMessage } from '../../features/chat/useOutgoingMessages'
 import { useTyping } from '../../features/chat/useTyping'
 import { Avatar } from '../Avatar'
 import { Composer } from '../Composer'
+import { DeleteMessagesDialog } from '../DeleteMessagesDialog'
 import { MessageList } from './MessageList'
 
 interface ChatPanelProps {
@@ -34,6 +37,12 @@ interface ChatPanelProps {
   // Resolve to null on success, or the error to show.
   onEdit: (message: Message, content: string) => Promise<ChatErrorKey | null>
   onRecall: (message: Message) => Promise<ChatErrorKey | null>
+  // Messages the user deleted for themselves in this session.
+  hidden: ReadonlySet<string>
+  // Delete for me, and recall for everyone, several messages at once. Resolve to null on
+  // success, or the error to show.
+  onHideMessages: (messages: Message[]) => Promise<ChatErrorKey | null>
+  onRecallMessages: (messages: Message[]) => Promise<ChatErrorKey | null>
   // Unread messages in `conversation`.
   unreadCount: number
   // The user's read marker for `conversation` (ISO 8601), or null when none is read.
@@ -63,6 +72,9 @@ export function ChatPanel({
   updates,
   onEdit,
   onRecall,
+  hidden,
+  onHideMessages,
+  onRecallMessages,
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const typing = useTyping(conversation?.id ?? null, currentUserId, conversation?.memberIds ?? [])
@@ -77,15 +89,62 @@ export function ChatPanel({
     conversationId: string
     error: ChatErrorKey
   } | null>(null)
+  // The selected messages, by id, while selecting; and whether the delete dialog is open.
+  const [selection, setSelection] = useState<{
+    conversationId: string
+    messages: ReadonlyMap<string, Message>
+  } | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   // Both belong to one conversation and are dropped when another one is opened.
   const editingHere = editing && editing.conversationId === conversation?.id ? editing : null
   const errorHere =
     actionError && actionError.conversationId === conversation?.id ? actionError.error : null
+  // Selecting ends when another conversation is opened (state adjusted during render, so
+  // nothing of it is ever shown with the wrong conversation).
+  if (selection && selection.conversationId !== conversation?.id) {
+    setSelection(null)
+    setDeleteOpen(false)
+  }
+  const selected = selection && selection.conversationId === conversation?.id ? selection.messages : null
+  const selectedIds = useMemo(() => (selected ? new Set(selected.keys()) : null), [selected])
 
   function startEdit(message: Message) {
     setActionError(null)
     setEditing(message)
   }
+
+  // Starts selecting with `message`, or adds or removes it (up to MESSAGE_SELECT_LIMIT).
+  function toggleSelect(message: Message) {
+    setActionError(null)
+    setEditing(null)
+    setSelection((current) => {
+      const messages = new Map(
+        current && current.conversationId === message.conversationId ? current.messages : [],
+      )
+      if (messages.has(message.id)) messages.delete(message.id)
+      else if (messages.size < MESSAGE_SELECT_LIMIT) messages.set(message.id, message)
+      return { conversationId: message.conversationId, messages }
+    })
+  }
+
+  function endSelection() {
+    setDeleteOpen(false)
+    setSelection(null)
+  }
+
+  // Escape ends selecting; while the dialog is open, Escape closes only the dialog.
+  const selecting = selected !== null
+  useEffect(() => {
+    if (!selecting || deleteOpen) return
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelection(null)
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [selecting, deleteOpen])
+
+  // The selected messages in their newest known version (e.g. recalled meanwhile).
+  const selectedMessages = selected ? withUpdates([...selected.values()], updates) : []
 
   async function saveEdit(message: Message, content: string) {
     // Nothing changed: nothing to save.
@@ -169,6 +228,9 @@ export function ChatPanel({
         changingId={changingId}
         onStartEdit={startEdit}
         onRecall={(message) => void recall(message)}
+        hidden={hidden}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
         onRetry={onRetry}
         onDiscard={onDiscard}
         onRead={onRead}
@@ -191,20 +253,62 @@ export function ChatPanel({
         </div>
       )}
 
-      <Composer
-        key={`composer:${conversation.id}:${editingHere?.id ?? ''}`}
-        onSend={(content) => onSend(conversation.id, content)}
-        onSendFile={(file, checked) => onSendFile(conversation.id, file, checked)}
-        onTyping={typing.setTyping}
-        editing={
-          editingHere && {
-            content: editingHere.content,
-            saving: changingId === editingHere.id,
-            onSave: (content) => void saveEdit(editingHere, content),
-            onCancel: () => setEditing(null),
+      {selected && (
+        <div className="flex items-center gap-2 border-t border-slate-200 px-4 py-3">
+          <p role="status" className="min-w-0 flex-1 text-sm">
+            {t('chat.selection.count', { count: selected.size })}
+            {selected.size >= MESSAGE_SELECT_LIMIT && (
+              <span className="block text-xs text-slate-500">
+                {t('chat.selection.limit', { max: MESSAGE_SELECT_LIMIT })}
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            disabled={selected.size === 0}
+            className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {t('chat.selection.delete')}
+          </button>
+          <button
+            type="button"
+            onClick={endSelection}
+            className="rounded-md px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          >
+            {t('chat.selection.cancel')}
+          </button>
+        </div>
+      )}
+
+      {/* Only hidden while selecting, so a half-written message is kept. */}
+      <div hidden={selected !== null}>
+        <Composer
+          key={`composer:${conversation.id}:${editingHere?.id ?? ''}`}
+          onSend={(content) => onSend(conversation.id, content)}
+          onSendFile={(file, checked) => onSendFile(conversation.id, file, checked)}
+          onTyping={typing.setTyping}
+          editing={
+            editingHere && {
+              content: editingHere.content,
+              saving: changingId === editingHere.id,
+              onSave: (content) => void saveEdit(editingHere, content),
+              onCancel: () => setEditing(null),
+            }
           }
-        }
-      />
+        />
+      </div>
+
+      {deleteOpen && selected && (
+        <DeleteMessagesDialog
+          messages={selectedMessages}
+          currentUserId={currentUserId}
+          onHide={() => onHideMessages(selectedMessages)}
+          onRecall={() => onRecallMessages(selectedMessages)}
+          onClose={() => setDeleteOpen(false)}
+          onDone={endSelection}
+        />
+      )}
     </div>
   )
 }

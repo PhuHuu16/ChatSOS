@@ -167,6 +167,13 @@ export async function fetchConversationList(
     .select('conversation_id, user_id, last_read_at')
   if (membersResponse.error) return fail(membersResponse, 'load')
 
+  // RLS returns the caller's own marks only.
+  const clearsResponse = await supabase
+    .from('conversation_clears')
+    .select('conversation_id, cleared_at')
+  if (clearsResponse.error) return fail(clearsResponse, 'load')
+  const clearedAt = new Map(clearsResponse.data.map((row) => [row.conversation_id, row.cleared_at]))
+
   const memberIdsByConversation = new Map<string, string[]>()
   const lastReadAt = new Map<string, string | null>()
   const memberReadAt = new Map<string, Record<string, string | null>>()
@@ -258,6 +265,7 @@ export async function fetchConversationList(
       lastActivityAt: row.last_message_at ?? row.created_at,
       lastReadAt: lastReadAt.get(row.id) ?? null,
       memberReadAt: memberReadAt.get(row.id) ?? {},
+      clearedAt: clearedAt.get(row.id) ?? null,
     }))
 
   return { ok: true, data: { conversations, users, lastMessages, unread } }
@@ -528,4 +536,57 @@ export async function editMessage(id: string, text: string): Promise<ChatResult<
 // clears the content and attachment. Recalling again changes nothing.
 export async function recallMessage(id: string): Promise<ChatResult<Message>> {
   return changeMessage(id, { deleted_at: new Date().toISOString() })
+}
+
+// At most this many messages can be selected, hidden or recalled at once. It also keeps
+// the `id=in.(...)` request URL well under server limits.
+export const MESSAGE_SELECT_LIMIT = 100
+
+// Hides messages from the caller only ("delete for me"); other members still see them.
+// One statement, so either every message is hidden or none is. Hiding a message again
+// changes nothing, so retrying after a lost answer is safe.
+export async function hideMessages(ids: string[]): Promise<ChatResult<null>> {
+  if (ids.length === 0 || ids.length > MESSAGE_SELECT_LIMIT) {
+    return { ok: false, error: 'chat.errors.deleteFailed' }
+  }
+  const response = await supabase
+    .from('message_hides')
+    .upsert(
+      ids.map((id) => ({ message_id: id })),
+      { onConflict: 'user_id,message_id', ignoreDuplicates: true },
+    )
+  if (response.error) return fail(response, 'delete')
+  return { ok: true, data: null }
+}
+
+// Deletes a conversation's history for the caller only: messages sent up to now are hidden
+// from them, other members keep everything. Returns the new mark (server time). Clearing
+// again only moves the mark forward, so retrying after a lost answer is safe.
+export async function clearConversation(conversationId: string): Promise<ChatResult<string>> {
+  const response = await supabase.rpc('clear_conversation', {
+    p_conversation_id: conversationId,
+  })
+  if (response.error) {
+    const failed = fail(response, 'delete')
+    return failed.error === 'chat.errors.deleteFailed'
+      ? { ok: false, error: 'chat.errors.deleteConversationFailed' }
+      : failed
+  }
+  return { ok: true, data: response.data }
+}
+
+// Recalls several of the caller's own messages for everyone in one statement: when one of
+// them is too old, the database refuses them all (CS001). RLS skips messages the caller
+// may not change, so the answer lists the messages that are now recalled.
+export async function recallMessages(ids: string[]): Promise<ChatResult<Message[]>> {
+  if (ids.length === 0 || ids.length > MESSAGE_SELECT_LIMIT) {
+    return { ok: false, error: 'chat.errors.changeFailed' }
+  }
+  const response = await supabase
+    .from('messages')
+    .update({ deleted_at: new Date().toISOString() })
+    .in('id', ids)
+    .select(MESSAGE_COLUMNS)
+  if (response.error) return fail(response, 'change')
+  return { ok: true, data: response.data.map(toMessage) }
 }

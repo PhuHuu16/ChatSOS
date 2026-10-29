@@ -168,6 +168,83 @@ export function withUpdates(
   return changed ? result : messages
 }
 
+// `messages` without the ones sent up to when the user deleted their conversation's
+// history (`clears`: conversation id -> ISO mark). The server leaves those out of every
+// later load; this drops the copies already in memory. Same array when none is dropped.
+export function afterClear<T extends { conversationId: string; createdAt: string }>(
+  messages: T[],
+  clears: ReadonlyMap<string, string>,
+): T[] {
+  if (clears.size === 0) return messages
+  const kept = messages.filter((message) => {
+    const mark = clears.get(message.conversationId)
+    return mark === undefined || timestampMicros(message.createdAt) > timestampMicros(mark)
+  })
+  return kept.length === messages.length ? messages : kept
+}
+
+// Whether a conversation shows in the list: not when the user deleted its history and no
+// message came after; it comes back with the next message. `lastMessages` must already be
+// filtered with afterClear and the same `clears`.
+export function isListed(
+  conversation: Conversation,
+  clears: ReadonlyMap<string, string>,
+  lastMessages: Message[],
+): boolean {
+  if (!clears.has(conversation.id)) return true
+  return lastMessages.some((message) => message.conversationId === conversation.id)
+}
+
+// The later of two ISO times (a missing one loses).
+function laterTime(a: string | undefined, b: string | null): string | undefined {
+  if (b === null) return a
+  if (a === undefined) return b
+  return timestampMicros(a) >= timestampMicros(b) ? a : b
+}
+
+// Every conversation's history mark: the loaded `clearedAt`, or the newer one set in this
+// session (`session`, conversation id -> ISO).
+export function clearMarks(
+  conversations: Conversation[],
+  session: ReadonlyMap<string, string>,
+): ReadonlyMap<string, string> {
+  const marks = new Map<string, string>()
+  for (const conversation of conversations) {
+    const mark = laterTime(session.get(conversation.id), conversation.clearedAt)
+    if (mark !== undefined) marks.set(conversation.id, mark)
+  }
+  return marks
+}
+
+// Why messages cannot be recalled together: one is not the user's own, one is already
+// recalled, or one is older than the time limit.
+export type RecallBlock = 'notOwn' | 'recalled' | 'expired'
+
+// Why `messages` cannot be recalled together by `userId` at `now` (ms), or null when they
+// can. The database checks the time again with its own clock.
+export function recallBlock(
+  messages: Message[],
+  userId: string,
+  now: number,
+  windowMs: number,
+): RecallBlock | null {
+  if (messages.some((message) => message.senderId !== userId)) return 'notOwn'
+  if (messages.some((message) => message.deletedAt !== null)) return 'recalled'
+  if (messages.some((message) => now - Date.parse(message.createdAt) >= windowMs)) {
+    return 'expired'
+  }
+  return null
+}
+
+// `messages` without the ones in `hidden`. Returns the same array when none is hidden.
+export function withoutHidden<T extends { id: string }>(
+  messages: T[],
+  hidden: ReadonlySet<string>,
+): T[] {
+  if (hidden.size === 0 || !messages.some((message) => hidden.has(message.id))) return messages
+  return messages.filter((message) => !hidden.has(message.id))
+}
+
 // Every message of the given lists once, oldest first.
 export function mergeMessages(...lists: Message[][]): Message[] {
   const byId = new Map<string, Message>()

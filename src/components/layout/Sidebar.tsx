@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   findUser,
@@ -27,6 +28,8 @@ interface SidebarProps {
   currentUserId: string
   selectedId: string | null
   onSelect: (conversationId: string) => void
+  // Asks to delete a conversation's history for the user (opens the confirmation).
+  onDeleteConversation: (conversation: Conversation) => void
   onNewChat: () => void
   onNewGroup: () => void
   onSignOut: () => void
@@ -51,6 +54,7 @@ export function Sidebar({
   currentUserId,
   selectedId,
   onSelect,
+  onDeleteConversation,
   onNewChat,
   onNewGroup,
   onSignOut,
@@ -63,6 +67,27 @@ export function Sidebar({
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
+  // The conversation whose ⋯ menu is open.
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+
+  // An open menu closes on a click outside it or on Escape.
+  useEffect(() => {
+    if (menuFor === null) return
+    const handlePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-conversation-menu]')) return
+      setMenuFor(null)
+    }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuFor(null)
+    }
+    document.addEventListener('pointerdown', handlePointer)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [menuFor])
 
   return (
     <div className="flex h-full w-full flex-col bg-white">
@@ -142,6 +167,8 @@ export function Sidebar({
             const last = getLastMessage(lastMessages, conversation.id)
             const isSelected = conversation.id === selectedId
             const unread = unreadCounts.get(conversation.id) ?? 0
+            const menuOpen = menuFor === conversation.id
+            const menuId = `conversation-menu-${conversation.id}`
 
             let prefix = ''
             if (last?.senderId === currentUserId) {
@@ -152,14 +179,16 @@ export function Sidebar({
             }
 
             return (
-              <li key={conversation.id}>
+              // An open menu's row is raised above the rows after it, which would cover the menu.
+              <li key={conversation.id} className={`group relative ${menuOpen ? 'z-10' : ''}`}>
                 <button
                   type="button"
                   onClick={() => onSelect(conversation.id)}
                   aria-current={isSelected ? 'true' : undefined}
+                  // On small screens the ⋯ button always shows, so the row leaves room for it.
                   className={`flex w-full items-center gap-3 px-4 py-3 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500 ${
                     isSelected ? 'bg-brand-50' : 'hover:bg-slate-50'
-                  }`}
+                  } pr-12 md:pr-4`}
                 >
                   <Avatar
                     id={conversation.id}
@@ -204,6 +233,42 @@ export function Sidebar({
                     </span>
                   </span>
                 </button>
+                {/* A separate button next to the row (a button cannot hold another one). On
+                    larger screens it shows on hover or focus, over the time and badge. */}
+                <div data-conversation-menu className="absolute top-1/2 right-2 -translate-y-1/2">
+                  <button
+                    type="button"
+                    onClick={() => setMenuFor(menuOpen ? null : conversation.id)}
+                    aria-label={t('chat.conversationActions', { name: title })}
+                    aria-expanded={menuOpen}
+                    aria-controls={menuOpen ? menuId : undefined}
+                    className={`rounded-full bg-white/90 px-2 py-0.5 text-base leading-none text-slate-600 shadow-sm hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500 ${
+                      menuOpen
+                        ? ''
+                        : 'md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100'
+                    }`}
+                  >
+                    <span aria-hidden="true">⋯</span>
+                  </button>
+                  {menuOpen && (
+                    <div
+                      id={menuId}
+                      className="absolute top-full right-0 z-10 mt-1 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuFor(null)
+                          onDeleteConversation(conversation)
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500"
+                      >
+                        <span aria-hidden="true">🗑</span>
+                        {t('chat.deleteConversation')}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </li>
             )
           })}
