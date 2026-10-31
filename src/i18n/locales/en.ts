@@ -64,8 +64,7 @@ export const en: Translation = {
       hide: 'Delete for me',
       hideNote: 'The messages disappear for you only; others still see them. This cannot be undone.',
       recall: 'Delete for everyone',
-      recallNote:
-        'Everyone will see "This message was deleted", and photos and files are deleted. Only for your own messages, within 2 minutes of sending.',
+      recallNote: 'Everyone will no longer see this message.',
       notOwn: "Can't delete for everyone: some messages are not yours.",
       recalled: "Can't delete for everyone: some messages were already deleted.",
       expired: "Can't delete for everyone: some messages were sent more than 2 minutes ago.",

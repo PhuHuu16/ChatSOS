@@ -65,8 +65,7 @@ export const vi = {
       hide: 'Xoá ở phía tôi',
       hideNote: 'Các tin biến mất với riêng bạn, người khác vẫn thấy. Không hoàn tác được.',
       recall: 'Xoá với mọi người',
-      recallNote:
-        'Mọi người sẽ thấy "Tin nhắn này đã bị xoá", ảnh và tệp bị xoá. Chỉ dùng được với tin của bạn trong 2 phút sau khi gửi.',
+      recallNote: 'Mọi người sẽ không thấy tin nhắn này.',
       notOwn: 'Không xoá với mọi người được: có tin của người khác.',
       recalled: 'Không xoá với mọi người được: có tin đã bị xoá.',
       expired: 'Không xoá với mọi người được: có tin đã gửi quá 2 phút.',
