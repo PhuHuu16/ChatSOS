@@ -6,8 +6,19 @@ realtime dùng [Supabase](https://supabase.com). Giao diện tiếng Việt và 
 
 ## Tính năng
 
-- Đăng ký, đăng nhập bằng email và mật khẩu (hỗ trợ cả khi bật xác nhận email).
-- Tìm người dùng theo tên để chat riêng; tạo nhóm có tên và thành viên.
+- Đăng ký bằng email, tên người dùng, số điện thoại di động Việt Nam và mật khẩu (hỗ trợ
+  cả khi bật xác nhận email). Mỗi số điện thoại chỉ dùng cho một tài khoản.
+- Đăng nhập bằng email hoặc số điện thoại cùng mật khẩu. Đăng nhập bằng số điện thoại
+  cần Edge Function `phone-sign-in` (xem mục 3 phần Cài đặt).
+- Quên mật khẩu: nhập email, nhận mã khôi phục qua email, đặt mật khẩu mới. Sau khi lưu,
+  các thiết bị khác đang đăng nhập tài khoản đó bị đăng xuất.
+- Tìm người dùng theo tên hoặc đúng số điện thoại để chat riêng; tạo nhóm có tên và
+  thành viên. Số điện thoại không bao giờ hiện cho người khác.
+- Có giới hạn số lần thử: 5 lần đăng nhập bằng một số điện thoại mỗi 15 phút, 20 lần tìm
+  theo số điện thoại mỗi người mỗi 10 phút.
+- Người quản trị xem danh sách tài khoản (hồ sơ, số điện thoại, hoạt động) trong
+  **Dashboard → Table Editor → schema `admin`**, view `users`. View này không truy cập
+  được qua API.
 - Gửi tin văn bản ngay lập tức trên giao diện; mất mạng thì báo lỗi, bấm "Thử lại"
   là gửi tiếp mà không bao giờ bị trùng tin.
 - Gửi ảnh (JPG, PNG, WebP, GIF) và tệp (PDF, TXT, ZIP, DOCX, XLSX, PPTX), tối đa
@@ -48,7 +59,7 @@ React 19, TypeScript, Vite, Tailwind CSS v4, i18next, supabase-js
 
 ### 1. Database Supabase
 
-Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 9 file trong
+Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 11 file trong
 `supabase/migrations/`, mỗi lần một file, theo đúng thứ tự tên file:
 
 1. `20261016000100_profiles.sql`: hồ sơ người dùng.
@@ -61,10 +72,16 @@ Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 9 file trong
 8. `20261029000100_avatars.sql`: bucket `avatars` (riêng tư) cho ảnh đại diện.
 9. `20261030000100_delete_messages_and_conversations.sql`: xoá tin và xoá lịch sử cuộc
    trò chuyện ở phía mình; Realtime không còn gửi sự kiện DELETE.
+10. `20261031000100_phone_and_admin_users.sql`: số điện thoại trong hồ sơ, hook kiểm tra
+    lúc đăng ký, tìm theo số điện thoại, view `admin.users`.
+11. `20261101000100_rate_limits.sql`: giới hạn số lần đăng nhập bằng số điện thoại và số
+    lần tìm theo số điện thoại.
 
 Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì. Sau đó chạy
 `supabase/tests/verify_schema.sql` (chỉ đọc); dòng `== ALL CHECKS PASSED ==` phải
-là `true`.
+là `true`. Có thể chạy thêm `supabase/tests/rate_limits_behaviour.sql` để thử các giới
+hạn: script luôn kết thúc bằng một lỗi có chữ `ALL n CHECKS PASSED` hoặc `FAILED`, và
+mọi thứ nó ghi đều được rollback.
 
 Kiểm tra thêm trong Dashboard: **Settings → Data API → Exposed schemas** không được
 có `private`.
@@ -77,7 +94,47 @@ Tương tự, `supabase/rollbacks/20261030000100_delete_messages_and_conversatio
 gỡ migration 9. Script tự từ chối khi còn tin đã ẩn hoặc mốc xoá lịch sử, vì gỡ đi thì
 những tin người dùng đã xoá sẽ hiện lại với họ.
 
-### 2. Biến môi trường
+Gỡ migration 11 bằng `supabase/rollbacks/20261101000100_rate_limits_rollback.sql`, sau khi
+đã gỡ hoặc tắt Edge Function `phone-sign-in`. Gỡ migration 10 bằng
+`supabase/rollbacks/20261031000100_phone_and_admin_users_rollback.sql`, sau khi đã tắt
+hook *Before User Created*. Script tự từ chối khi còn hồ sơ có số điện thoại; hướng dẫn
+chi tiết nằm ở đầu từng file.
+
+### 2. Cấu hình Auth trong Dashboard
+
+- **Authentication → Hooks → Before User Created**: chọn hàm Postgres
+  `public.hook_before_user_created`. Có hook, đăng ký trùng hoặc sai tên người dùng / số
+  điện thoại sẽ báo lỗi rõ ràng. Không có hook thì những đăng ký đó vẫn bị chặn, nhưng chỉ
+  nhận lỗi chung chung.
+- **Authentication → Email Templates → Reset Password**: nội dung email phải chứa mã
+  `{{ .Token }}`, vì trang quên mật khẩu yêu cầu nhập mã chứ không dùng link.
+- **Thời hạn mã khôi phục** (Email OTP Expiration trong phần cài đặt Email của
+  Authentication): nên đặt 900 giây (15 phút).
+
+### 3. Edge Function đăng nhập bằng số điện thoại
+
+Supabase Auth chỉ đăng nhập bằng email (đăng nhập bằng điện thoại của nó cần dịch vụ SMS
+trả phí). Function `supabase/functions/phone-sign-in` tìm email của tài khoản theo số điện
+thoại bằng secret key ở phía server rồi đăng nhập, nên email không bao giờ tới trình duyệt.
+Deploy bằng Supabase CLI, **tắt kiểm tra JWT** vì người gọi chưa đăng nhập:
+
+```bash
+supabase functions deploy phone-sign-in --no-verify-jwt
+```
+
+Secret tuỳ chọn `PHONE_SIGN_IN_IP_HEADER`: tên header chứa IP người gọi, dùng để giới hạn
+60 lần thử mỗi IP trong 15 phút. Chỉ đặt khi đã chắc người gọi không giả mạo được header
+đó; để trống thì chỉ giới hạn theo số điện thoại. Chưa deploy function thì đăng nhập
+bằng số điện thoại báo "Tạm thời chưa đăng nhập được bằng số điện thoại", còn đăng nhập
+bằng email vẫn chạy bình thường.
+
+Kiểm thử logic của function (không cần Supabase, Node 22.18 trở lên):
+
+```bash
+node --test supabase/functions/phone-sign-in/handler.test.mjs
+```
+
+### 4. Biến môi trường
 
 ```bash
 cp .env.example .env.local
@@ -95,7 +152,7 @@ service_role key hay secret key vào đây; dữ liệu được bảo vệ bằ
 bằng việc giấu key. Thiếu hoặc sai biến thì app hiện màn hình "Chưa cấu hình kết
 nối máy chủ".
 
-### 3. Chạy
+### 5. Chạy
 
 ```bash
 npm install
@@ -132,7 +189,7 @@ Sau khi có tên miền, thêm nó vào **Dashboard → Authentication → URL C
 src/
   main.tsx, App.tsx      khởi động, kiểm tra cấu hình, định tuyến đăng nhập
   components/            giao diện dùng chung; layout/ là màn hình chat
-  features/auth/         đăng ký, đăng nhập, phiên
+  features/auth/         đăng ký, đăng nhập (email / số điện thoại), quên mật khẩu, phiên
   features/chat/         API tin nhắn, realtime, gửi tin, tệp đính kèm
   features/profile/      hồ sơ: xử lý ảnh, lưu tên và ảnh đại diện
   i18n/                  bản dịch vi / en
@@ -140,8 +197,9 @@ src/
   routing/               định tuyến tối giản
 supabase/
   migrations/            schema, RLS, hàm, trigger, storage
+  functions/             Edge Function phone-sign-in và test của nó
   rollbacks/             script gỡ migration (chạy tay, có điều kiện an toàn)
-  tests/                 kiểm tra schema (chỉ đọc)
+  tests/                 kiểm tra schema (chỉ đọc) và thử giới hạn (tự rollback)
 ```
 
 ## Hạn chế đã biết
@@ -158,3 +216,11 @@ supabase/
   **Dashboard → Storage → avatars**.
 - Ảnh đại diện chọn từ máy được giới hạn 20 MB và 40 megapixel; giới hạn này không
   chặn được mọi ảnh cố tình làm trình duyệt tốn bộ nhớ khi giải mã.
+- Số điện thoại không được xác minh bằng SMS: ai đăng ký trước thì giữ số đó. Chỉ nhận số
+  di động Việt Nam.
+- Tài khoản tạo trước khi có tính năng số điện thoại không có số, nên chỉ đăng nhập được
+  bằng email, và chưa có màn hình để thêm số sau.
+- Quên mật khẩu chỉ khôi phục qua email, kể cả với người thường đăng nhập bằng số điện
+  thoại.
+- Đăng nhập bằng số điện thoại chỉ chạy khi đã deploy Edge Function `phone-sign-in`.
+  Chưa đặt `PHONE_SIGN_IN_IP_HEADER` thì không có giới hạn theo IP.

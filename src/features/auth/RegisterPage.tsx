@@ -8,11 +8,13 @@ import { PasswordInput } from './PasswordInput'
 import { TextField } from './TextField'
 import { useAuth } from './useAuth'
 import {
+  normalizePhone,
   normalizeUsernameInput,
   validateDisplayName,
   validateEmail,
   validatePassword,
   validatePasswordConfirmation,
+  validatePhone,
   validateUsername,
   type ValidationErrorKey,
 } from './validation'
@@ -21,6 +23,7 @@ interface RegisterValues {
   username: string
   displayName: string
   email: string
+  phone: string
   password: string
   passwordConfirm: string
 }
@@ -31,6 +34,7 @@ const EMPTY_VALUES: RegisterValues = {
   username: '',
   displayName: '',
   email: '',
+  phone: '',
   password: '',
   passwordConfirm: '',
 }
@@ -40,6 +44,7 @@ function validate(values: RegisterValues): RegisterErrors {
     username: validateUsername(values.username),
     displayName: validateDisplayName(values.displayName),
     email: validateEmail(values.email),
+    phone: validatePhone(values.phone),
     password: validatePassword(values.password),
     passwordConfirm: validatePasswordConfirmation(values.password, values.passwordConfirm),
   }
@@ -84,7 +89,8 @@ export function RegisterPage() {
     if (pendingRef.current) return
     setServerError(null)
     setSubmitted(true)
-    if (hasErrors(validate(values))) return
+    const phone = normalizePhone(values.phone)
+    if (hasErrors(validate(values)) || phone === null) return
 
     const email = values.email.trim()
     pendingRef.current = true
@@ -94,6 +100,7 @@ export function RegisterPage() {
       password: values.password,
       username: values.username.trim(),
       displayName: values.displayName.trim(),
+      phone,
     })
     pendingRef.current = false
     setPending(false)
@@ -170,6 +177,18 @@ export function RegisterPage() {
           value={values.email}
           onChange={(event) => setField('email', event.target.value)}
           error={fieldError('email')}
+          disabled={pending}
+        />
+        <TextField
+          label={t('auth.fields.phone')}
+          type="tel"
+          name="phone"
+          autoComplete="tel"
+          inputMode="tel"
+          placeholder={t('auth.fields.phonePlaceholder')}
+          value={values.phone}
+          onChange={(event) => setField('phone', event.target.value)}
+          error={fieldError('phone')}
           disabled={pending}
         />
         <PasswordInput

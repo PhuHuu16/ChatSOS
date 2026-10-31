@@ -5,8 +5,8 @@ import {
   createGroupChat,
   GROUP_MAX_MEMBERS,
   GROUP_TITLE_MAX_LENGTH,
-  normalizeUsernameQuery,
-  searchProfiles,
+  parseUserSearch,
+  searchUsers,
   type GroupCheckErrorKey,
 } from '../features/chat/api'
 import type { ChatErrorKey } from '../features/chat/chatErrors'
@@ -41,7 +41,9 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
   // Blocks a second submit before the pending state has re-rendered.
   const pendingRef = useRef(false)
 
-  const normalized = normalizeUsernameQuery(query)
+  // "<username prefix>:<phone>", either part possibly empty; null when nothing can match.
+  const parsed = parseUserSearch(query)
+  const normalized = parsed && `${parsed.username ?? ''}:${parsed.phone ?? ''}`
   const searchKey = useDebouncedValue(normalized, SEARCH_DELAY_MS)
   // The key embeds the caller so the loader stays a stable module-level function.
   const search = useChatQuery(searchKey === null ? null : `${currentUserId}:${searchKey}`, loadSearch)
@@ -255,8 +257,8 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
   )
 }
 
-// key = "<current user id>:<normalized query>"
+// key = "<current user id>:<username prefix>:<phone>". None of the three contains ":".
 function loadSearch(key: string) {
-  const separator = key.indexOf(':')
-  return searchProfiles(key.slice(separator + 1), key.slice(0, separator))
+  const [userId = '', username = '', phone = ''] = key.split(':')
+  return searchUsers({ username: username || null, phone: phone || null }, userId)
 }

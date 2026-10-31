@@ -1,6 +1,7 @@
 // Reads and writes for the chat screens. Every request runs as the signed-in user, so RLS
 // already limits rows to conversations the user belongs to; nothing here filters by user id.
 import { supabase } from '../../lib/supabase'
+import { normalizePhone } from '../auth/validation'
 import type { Database } from '../../types/database'
 import { toChatErrorKey, type ChatAction, type ChatErrorKey } from './chatErrors'
 import type {
@@ -422,6 +423,54 @@ export const PROFILE_SEARCH_LIMIT = 20
 export function normalizeUsernameQuery(text: string): string | null {
   const query = text.trim().toLowerCase().replace(/^@/, '')
   return USERNAME_QUERY.test(query) ? query : null
+}
+
+// What the search box can match: a username prefix, an exact phone number, or both (a
+// username may be all digits, so a phone-shaped query also searches usernames).
+export interface UserSearch {
+  username: string | null
+  // The stored form +84xxxxxxxxx.
+  phone: string | null
+}
+
+// null when the text can match neither a username nor a phone number.
+export function parseUserSearch(text: string): UserSearch | null {
+  const username = normalizeUsernameQuery(text)
+  const phone = normalizePhone(text)
+  return username === null && phone === null ? null : { username, phone }
+}
+
+// The user with exactly this number (stored form), the caller excluded. The number itself
+// is never returned.
+export async function findProfileByPhone(phone: string): Promise<ChatResult<Profile[]>> {
+  const response = await supabase.rpc('find_profile_by_phone', { p_phone: phone })
+  if (response.error) return fail(response, 'phoneSearch')
+  return {
+    ok: true,
+    data: response.data.map((row) => ({
+      id: row.id,
+      username: row.username,
+      displayName: row.display_name,
+      avatarPath: row.avatar_path,
+    })),
+  }
+}
+
+// Phone match first, then username matches, without duplicates.
+export async function searchUsers(
+  search: UserSearch,
+  excludeUserId: string,
+): Promise<ChatResult<Profile[]>> {
+  const empty: ChatResult<Profile[]> = { ok: true, data: [] }
+  const [byPhone, byUsername] = await Promise.all([
+    search.phone === null ? empty : findProfileByPhone(search.phone),
+    search.username === null ? empty : searchProfiles(search.username, excludeUserId),
+  ])
+  if (!byPhone.ok) return byPhone
+  if (!byUsername.ok) return byUsername
+  const seen = new Set(byPhone.data.map((profile) => profile.id))
+  const rest = byUsername.data.filter((profile) => !seen.has(profile.id))
+  return { ok: true, data: [...byPhone.data, ...rest].slice(0, PROFILE_SEARCH_LIMIT) }
 }
 
 // Users whose username starts with `query` (already normalized), the caller excluded.

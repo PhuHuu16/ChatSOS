@@ -1,11 +1,15 @@
--- ChatSOS · read-only verification. Run after all 9 migrations (the 5 of Phase 1,
+-- ChatSOS · read-only verification. Run after all 11 migrations (the 5 of Phase 1,
 -- 20261028000100_edit_recall_messages.sql, 20261028000200_typing_and_read_receipts.sql,
--- 20261029000100_avatars.sql and 20261030000100_delete_messages_and_conversations.sql).
--- A single SELECT: it changes nothing. Failing checks are listed first, and the
--- "== ALL CHECKS PASSED ==" row is true only when every check passed.
+-- 20261029000100_avatars.sql, 20261030000100_delete_messages_and_conversations.sql,
+-- 20261031000100_phone_and_admin_users.sql and 20261101000100_rate_limits.sql).
+-- Rate-limit behaviour (counting, refusing) is tested by rate_limits_behaviour.sql.
+-- A single SELECT: it changes nothing (the functions it calls only read). Failing checks
+-- are listed first, and the "== ALL CHECKS PASSED ==" row is true only when every check
+-- passed. Needs at least one existing profile (for the "username taken" hook check).
 --
 -- Not covered here (check by hand or in step 1D):
---   * Settings > Data API > Exposed schemas must NOT include "private".
+--   * Settings > Data API > Exposed schemas must NOT include "private" or "admin".
+--   * Whether the Before User Created hook is enabled (Dashboard > Authentication > Hooks).
 --   * Real RLS behaviour and Realtime delivery are tested end to end in step 1D.
 
 with
@@ -24,6 +28,7 @@ target_roles (role_name) as (
 -- The complete allowlist. Anything granted that is not listed here is reported
 -- as UNEXPECTED; anything listed that is not granted is reported as MISSING.
 -- column_name null = table-level grant (covers every column of the table).
+-- profiles.phone is deliberately absent: no client role may read or change it.
 allowed_privileges (role_name, table_name, privilege, column_name) as (
   values
     ('authenticated', 'profiles', 'SELECT', 'id'),
@@ -99,25 +104,33 @@ privilege_matrix as (
   union all
   select * from column_privilege_matrix
 ),
-expected_functions (signature, authenticated_can_execute) as (
+-- security_definer false only for the helpers normalize_vn_phone and hit_rate_limit, which
+-- run inside the definer functions that call them.
+expected_functions (signature, authenticated_can_execute, security_definer) as (
   values
-    ('public.handle_new_user()', false),
-    ('public.create_direct_conversation(uuid)', true),
-    ('public.create_group_conversation(text, uuid[])', true),
-    ('private.is_member(uuid)', true),
-    ('private.can_access_attachment(text)', true),
-    ('private.validate_message_attachment()', false),
-    ('private.touch_conversation()', false),
-    ('private.guard_message_update()', false),
-    ('private.attachment_unused(text)', true),
-    ('private.can_use_typing_topic(text)', true),
-    ('private.avatar_in_use(text)', true),
-    ('private.validate_profile_avatar()', false),
-    ('public.clear_conversation(uuid)', true),
-    ('private.can_hide_message(uuid)', true)
+    ('public.handle_new_user()', false, true),
+    ('public.create_direct_conversation(uuid)', true, true),
+    ('public.create_group_conversation(text, uuid[])', true, true),
+    ('private.is_member(uuid)', true, true),
+    ('private.can_access_attachment(text)', true, true),
+    ('private.validate_message_attachment()', false, true),
+    ('private.touch_conversation()', false, true),
+    ('private.guard_message_update()', false, true),
+    ('private.attachment_unused(text)', true, true),
+    ('private.can_use_typing_topic(text)', true, true),
+    ('private.avatar_in_use(text)', true, true),
+    ('private.validate_profile_avatar()', false, true),
+    ('public.clear_conversation(uuid)', true, true),
+    ('private.can_hide_message(uuid)', true, true),
+    ('private.normalize_vn_phone(text)', false, false),
+    ('public.hook_before_user_created(jsonb)', false, true),
+    ('public.find_profile_by_phone(text)', true, true),
+    ('private.hit_rate_limit(text, interval, integer)', false, false),
+    ('public.phone_sign_in_check(text, text)', false, true),
+    ('public.phone_sign_in_succeeded(text)', false, true)
 ),
 functions as (
-  select e.signature, e.authenticated_can_execute, p.oid, p.prosecdef, p.proconfig, p.proacl
+  select e.signature, e.authenticated_can_execute, e.security_definer, p.oid, p.prosecdef, p.proconfig, p.proacl
   from expected_functions e
   left join pg_catalog.pg_proc p on p.oid = to_regprocedure(e.signature)
 ),
@@ -199,6 +212,7 @@ expected_constraints (table_name, constraint_name) as (
     ('profiles', 'profiles_username_format'),
     ('profiles', 'profiles_display_name_valid'),
     ('profiles', 'profiles_avatar_path_valid'),
+    ('profiles', 'profiles_phone_format'),
     ('conversations', 'conversations_type_valid'),
     ('conversations', 'conversations_direct_key_format'),
     ('conversations', 'conversations_shape'),
@@ -318,10 +332,14 @@ checks (name, ok, detail) as (
     null
 
   union all
-  -- Functions: exist, SECURITY DEFINER, empty search_path, no PUBLIC/anon EXECUTE
+  -- Functions: exist, SECURITY DEFINER as expected, empty search_path, no PUBLIC/anon EXECUTE
   select 'function exists: ' || f.signature, f.oid is not null, null from functions f
   union all
-  select 'security definer: ' || f.signature, coalesce(f.prosecdef, false), null from functions f
+  select
+    format('security definer = %s: %s', f.security_definer, f.signature),
+    f.oid is not null and f.prosecdef = f.security_definer,
+    null
+  from functions f
   union all
   select
     'search_path is empty: ' || f.signature,
@@ -354,7 +372,7 @@ checks (name, ok, detail) as (
       select count(*)
       from pg_catalog.pg_proc p
       where p.pronamespace = 'private'::regnamespace
-    ) = 10,
+    ) = 12,
     (
       select 'found: ' || coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.proname), 'none')
       from pg_catalog.pg_proc p
@@ -752,6 +770,375 @@ checks (name, ok, detail) as (
       ('writes only for the caller, with the server clock', 'values (v_me, p_conversation_id, now())'),
       ('never moves the mark back', 'greatest(public.conversation_clears.cleared_at, excluded.cleared_at)')
   ) as frag (label, needle)
+
+  union all
+  -- Migration 10: phone column. Printed forms written by hand; not yet captured from the
+  -- deployed schema, so compare the detail column if one fails.
+  select
+    'constraint definition: profiles_phone_format',
+    coalesce((
+      select pg_get_constraintdef(k.oid)
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.profiles') and k.conname = 'profiles_phone_format'
+    ) = 'CHECK (((phone IS NULL) OR (phone ~ ''^\+84[35789][0-9]{8}$''::text)))', false),
+    (
+      select 'actual: ' || pg_get_constraintdef(k.oid)
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.profiles') and k.conname = 'profiles_phone_format'
+    )
+  union all
+  select
+    'unique index profiles_phone_key',
+    coalesce(
+      pg_get_indexdef(to_regclass('public.profiles_phone_key'))
+        = 'CREATE UNIQUE INDEX profiles_phone_key ON public.profiles USING btree (phone)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_indexdef(to_regclass('public.profiles_phone_key')), 'none')
+  union all
+  -- normalize_vn_phone is pure, so its behaviour can be checked here directly.
+  select
+    format('normalize_vn_phone(%L) = %s', c.input, coalesce(c.expected, 'null')),
+    case
+      when to_regprocedure('private.normalize_vn_phone(text)') is null then false
+      else private.normalize_vn_phone(c.input) is not distinct from c.expected
+    end,
+    case
+      when to_regprocedure('private.normalize_vn_phone(text)') is null then 'function missing'
+      else 'actual: ' || coalesce(private.normalize_vn_phone(c.input), 'null')
+    end
+  from (
+    values
+      ('0912345678', '+84912345678'),
+      ('84912345678', '+84912345678'),
+      ('+84912345678', '+84912345678'),
+      (' 091 234-56.78 ', '+84912345678'),
+      ('(+84) 38 123 4567', '+84381234567'),
+      ('0312345678', '+84312345678'),
+      ('0512345678', '+84512345678'),
+      ('0712345678', '+84712345678'),
+      ('0812345678', '+84812345678'),
+      ('0212345678', null),
+      ('0112345678', null),
+      ('091234567', null),
+      ('09123456789', null),
+      ('+840912345678', null),
+      ('+1 415 555 2671', null),
+      ('09l2345678', null),
+      ('', null),
+      (null, null)
+  ) as c (input, expected)
+  union all
+  -- handle_new_user stores the phone and rejects a missing or invalid one.
+  select
+    'function body: public.handle_new_user() ' || frag.label,
+    coalesce((
+      select position(frag.needle in p.prosrc) > 0
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure('public.handle_new_user()')
+    ), false),
+    null
+  from (
+    values
+      ('normalizes the phone', 'private.normalize_vn_phone(new.raw_user_meta_data ->> ''phone'')'),
+      ('rejects an invalid phone', 'raise exception ''invalid phone'''),
+      ('stores the phone', 'insert into public.profiles (id, username, display_name, phone)')
+  ) as frag (label, needle)
+  union all
+  -- The hook: only Supabase Auth may call it, and it answers as the app expects.
+  select
+    'supabase_auth_admin can execute public.hook_before_user_created(jsonb)',
+    to_regprocedure('public.hook_before_user_created(jsonb)') is not null
+      and has_function_privilege('supabase_auth_admin', to_regprocedure('public.hook_before_user_created(jsonb)'), 'EXECUTE'),
+    null
+  union all
+  select
+    'supabase_auth_admin has USAGE on schema public',
+    has_schema_privilege('supabase_auth_admin', 'public', 'USAGE'),
+    null
+  union all
+  select
+    'hook: ' || h.label,
+    case
+      when to_regprocedure('public.hook_before_user_created(jsonb)') is null then false
+      else public.hook_before_user_created(h.event) = h.expected
+    end,
+    case
+      when to_regprocedure('public.hook_before_user_created(jsonb)') is null then 'function missing'
+      else 'actual: ' || public.hook_before_user_created(h.event)::text
+    end
+  from (
+    values
+      ('allows new valid data',
+        '{"user": {"user_metadata": {"username": "verify_unused_zz9", "display_name": "V", "phone": "0399999999"}}}'::jsonb,
+        '{}'::jsonb),
+      ('passes through a request without ChatSOS data',
+        '{"user": {"user_metadata": {}}}'::jsonb,
+        '{}'::jsonb),
+      ('rejects an invalid username',
+        '{"user": {"user_metadata": {"username": "a b", "phone": "0399999999"}}}'::jsonb,
+        '{"error": {"http_code": 400, "message": "chatsos:username_invalid"}}'::jsonb),
+      ('rejects a missing phone',
+        '{"user": {"user_metadata": {"username": "verify_unused_zz9"}}}'::jsonb,
+        '{"error": {"http_code": 400, "message": "chatsos:phone_invalid"}}'::jsonb),
+      ('rejects an invalid phone',
+        '{"user": {"user_metadata": {"username": "verify_unused_zz9", "phone": "0212345678"}}}'::jsonb,
+        '{"error": {"http_code": 400, "message": "chatsos:phone_invalid"}}'::jsonb)
+  ) as h (label, event, expected)
+  union all
+  -- Uses an existing username in upper case, so it also checks the lowercasing.
+  select
+    'hook: rejects a taken username (any case)',
+    coalesce((
+      select public.hook_before_user_created(jsonb_build_object('user', jsonb_build_object(
+               'user_metadata', jsonb_build_object('username', upper(p.username), 'phone', '0399999999'))))
+             = '{"error": {"http_code": 409, "message": "chatsos:username_taken"}}'::jsonb
+      from public.profiles p
+      order by p.username
+      limit 1
+    ), false),
+    'needs at least one profile'
+  union all
+  -- Only checkable once some profile has a phone; until then it passes and says so.
+  select
+    'hook: rejects a taken phone (written as 0…)',
+    coalesce((
+      select public.hook_before_user_created(jsonb_build_object('user', jsonb_build_object(
+               'user_metadata', jsonb_build_object('username', 'verify_unused_zz9', 'phone', '0' || substr(p.phone, 4)))))
+             = '{"error": {"http_code": 409, "message": "chatsos:phone_taken"}}'::jsonb
+      from public.profiles p
+      where p.phone is not null
+      order by p.phone
+      limit 1
+    ), true),
+    case
+      when exists (select 1 from public.profiles p where p.phone is not null) then 'checked with a stored phone'
+      else 'skipped: no profile has a phone yet'
+    end
+  union all
+  -- find_profile_by_phone returns no phone column and keeps its safety conditions.
+  select
+    'find_profile_by_phone returns (id, username, display_name, avatar_path) only',
+    coalesce(
+      pg_get_function_result(to_regprocedure('public.find_profile_by_phone(text)'))
+        = 'TABLE(id uuid, username text, display_name text, avatar_path text)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_function_result(to_regprocedure('public.find_profile_by_phone(text)')), 'none')
+  union all
+  select
+    'function body: public.find_profile_by_phone(text) ' || frag.label,
+    coalesce((
+      select position(frag.needle in p.prosrc) > 0
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure('public.find_profile_by_phone(text)')
+    ), false),
+    null
+  from (
+    values
+      ('requires a signed-in caller', 'errcode = ''42501'''),
+      ('matches the exact number', 'where p.phone = v_phone'),
+      ('never returns the caller', 'and p.id <> v_me')
+  ) as frag (label, needle)
+  union all
+  -- admin.users: Dashboard only.
+  select 'schema admin exists', to_regnamespace('admin') is not null, null
+  union all
+  select
+    format('%s has no USAGE on schema admin', r.role_name),
+    to_regnamespace('admin') is not null and not has_schema_privilege(r.role_name, 'admin', 'USAGE'),
+    null
+  from target_roles r
+  union all
+  select
+    'no PUBLIC USAGE on schema admin',
+    to_regnamespace('admin') is not null
+      and not exists (
+        select 1
+        from pg_catalog.pg_namespace n, aclexplode(n.nspacl) x
+        where n.nspname = 'admin' and x.grantee = 0
+      ),
+    null
+  union all
+  select
+    'view admin.users exists with security_invoker',
+    exists (
+      select 1
+      from pg_catalog.pg_class c
+      where c.oid = to_regclass('admin.users')
+        and c.relkind = 'v'
+        and 'security_invoker=true' = any (c.reloptions)
+    ),
+    (select 'reloptions: ' || coalesce(array_to_string(c.reloptions, ', '), 'none') from pg_catalog.pg_class c where c.oid = to_regclass('admin.users'))
+  union all
+  select
+    format('%s has no privilege on admin.users', r.role_name),
+    to_regclass('admin.users') is not null
+      and not exists (
+        select 1
+        from (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) as p (privilege)
+        where has_table_privilege(r.role_name, to_regclass('admin.users'), p.privilege)
+      ),
+    null
+  from target_roles r
+  union all
+  select
+    'no PUBLIC grant on admin.users',
+    to_regclass('admin.users') is not null
+      and not exists (
+        select 1
+        from pg_catalog.pg_class c, aclexplode(c.relacl) x
+        where c.oid = to_regclass('admin.users') and x.grantee = 0
+      ),
+    null
+  union all
+  -- Exactly the approved columns, so no password or token column can slip in.
+  select
+    'admin.users columns are exactly the approved list',
+    coalesce((
+      select array_agg(a.attname::text order by a.attnum)
+      from pg_catalog.pg_attribute a
+      where a.attrelid = to_regclass('admin.users') and a.attnum > 0 and not a.attisdropped
+    ) = array[
+      'id', 'email', 'phone', 'username', 'display_name', 'avatar_path', 'created_at',
+      'last_sign_in_at', 'email_confirmed_at', 'banned_until', 'conversations', 'messages_sent'
+    ], false),
+    (
+      select 'actual: ' || coalesce(string_agg(a.attname::text, ', ' order by a.attnum), 'none')
+      from pg_catalog.pg_attribute a
+      where a.attrelid = to_regclass('admin.users') and a.attnum > 0 and not a.attisdropped
+    )
+  union all
+  select
+    'admin.users definition reads no password or token column',
+    coalesce(
+      pg_get_viewdef(to_regclass('admin.users')) !~* '(password|token|secret)',
+      false
+    ),
+    null
+
+  union all
+  -- Migration 11: the counters are reachable only through the limit functions.
+  select
+    'RLS enabled: private.rate_limit_counters',
+    coalesce((
+      select c.relrowsecurity
+      from pg_catalog.pg_class c
+      where c.oid = to_regclass('private.rate_limit_counters')
+    ), false),
+    null
+  union all
+  select
+    format('%s has no privilege on private.rate_limit_counters', r.role_name),
+    to_regclass('private.rate_limit_counters') is not null
+      and not exists (
+        select 1
+        from (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) as p (privilege)
+        where has_table_privilege(r.role_name, to_regclass('private.rate_limit_counters'), p.privilege)
+      ),
+    null
+  from (values ('anon'), ('authenticated'), ('service_role')) as r (role_name)
+  union all
+  select
+    'no PUBLIC grant on private.rate_limit_counters',
+    to_regclass('private.rate_limit_counters') is not null
+      and not exists (
+        select 1
+        from pg_catalog.pg_class c, aclexplode(c.relacl) x
+        where c.oid = to_regclass('private.rate_limit_counters') and x.grantee = 0
+      ),
+    null
+  union all
+  select
+    'no policies on private.rate_limit_counters',
+    not exists (
+      select 1
+      from pg_catalog.pg_policies p
+      where p.schemaname = 'private' and p.tablename = 'rate_limit_counters'
+    ),
+    null
+  union all
+  select
+    'primary key rate_limit_counters (bucket, window_start)',
+    coalesce(
+      pg_get_indexdef(to_regclass('private.rate_limit_counters_pkey'))
+        = 'CREATE UNIQUE INDEX rate_limit_counters_pkey ON private.rate_limit_counters USING btree (bucket, window_start)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_indexdef(to_regclass('private.rate_limit_counters_pkey')), 'none')
+  union all
+  -- Only the phone-sign-in Edge Function (service_role) records sign-in attempts; anon and
+  -- authenticated are refused by the function checks above.
+  select
+    format('service_role can execute %s', s.signature),
+    to_regprocedure(s.signature) is not null
+      and has_function_privilege('service_role', to_regprocedure(s.signature), 'EXECUTE'),
+    null
+  from (values ('public.phone_sign_in_check(text, text)'), ('public.phone_sign_in_succeeded(text)')) as s (signature)
+  union all
+  -- A long wait on a counter row fails, which refuses the request, instead of hanging.
+  select
+    format('lock_timeout=2s: %s', s.signature),
+    coalesce((
+      select 'lock_timeout=2s' = any (p.proconfig)
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure(s.signature)
+    ), false),
+    null
+  from (
+    values
+      ('public.phone_sign_in_check(text, text)'),
+      ('public.phone_sign_in_succeeded(text)'),
+      ('public.find_profile_by_phone(text)')
+  ) as s (signature)
+  union all
+  select
+    'find_profile_by_phone is VOLATILE (it records lookups)',
+    coalesce((
+      select p.provolatile = 'v'
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure('public.find_profile_by_phone(text)')
+    ), false),
+    null
+  union all
+  -- The lookup is counted before the search.
+  select
+    'find_profile_by_phone counts the lookup before reading profiles',
+    coalesce((
+      select x.limit_at > 0 and x.search_at > 0 and x.limit_at < x.search_at
+      from (
+        select
+          position('private.hit_rate_limit(''phone_lookup:'' || v_me::text, interval ''10 minutes'', 20)' in p.prosrc) as limit_at,
+          position('return query' in p.prosrc) as search_at
+        from pg_catalog.pg_proc p
+        where p.oid = to_regprocedure('public.find_profile_by_phone(text)')
+      ) as x
+    ), false),
+    null
+  union all
+  select
+    'function body: ' || frag.signature || ' ' || frag.label,
+    coalesce((
+      select position(frag.needle in p.prosrc) > 0
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure(frag.signature)
+    ), false),
+    null
+  from (
+    values
+      ('public.find_profile_by_phone(text)', 'identifies the caller by auth.uid() only',
+        'v_me uuid := (select auth.uid())'),
+      ('public.find_profile_by_phone(text)', 'refuses with PT429 over the limit',
+        'errcode = ''PT429'''),
+      ('public.phone_sign_in_check(text, text)', 'allows 5 attempts per number per 15 minutes',
+        '''signin_phone:'' || encode(sha256(convert_to(v_phone, ''UTF8'')), ''hex''), interval ''15 minutes'', 5)'),
+      ('public.phone_sign_in_check(text, text)', 'allows 60 attempts per IP address per 15 minutes',
+        '''signin_ip:'' || encode(sha256(convert_to(p_ip, ''UTF8'')), ''hex''), interval ''15 minutes'', 60)'),
+      ('private.hit_rate_limit(text, interval, integer)', 'checks and records in one statement',
+        'on conflict (bucket, window_start) do update set hits = c.hits + 1'),
+      ('private.hit_rate_limit(text, interval, integer)', 'cleanup never waits on locked rows',
+        'for update skip locked')
+  ) as frag (signature, label, needle)
 )
 select name, ok, detail
 from (

@@ -8,3 +8,7 @@ const { url, key } = validateSupabaseConfig(
 )
 
 export const supabase = createClient<Database>(url, key)
+
+// For requests the client does not make itself (the phone-sign-in Edge Function).
+export const supabaseUrl = url
+export const supabaseKey = key

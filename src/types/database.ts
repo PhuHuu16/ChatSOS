@@ -11,7 +11,8 @@ export type Database = {
   public: {
     Tables: {
       profiles: {
-        // created_at exists but is not granted to authenticated.
+        // created_at and phone exist but are not granted to authenticated (phone is
+        // only matched by find_profile_by_phone, never returned).
         Row: {
           id: string
           username: string
@@ -129,6 +130,15 @@ export type Database = {
       clear_conversation: {
         Args: { p_conversation_id: string }
         Returns: string
+      }
+      find_profile_by_phone: {
+        Args: { p_phone: string }
+        Returns: {
+          id: string
+          username: string
+          display_name: string
+          avatar_path: string | null
+        }[]
       }
     }
     Enums: {

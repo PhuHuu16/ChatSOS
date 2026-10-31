@@ -7,7 +7,11 @@ import type { AuthErrorKey } from './authContext'
 import { PasswordInput } from './PasswordInput'
 import { TextField } from './TextField'
 import { useAuth } from './useAuth'
-import { validateEmail, type ValidationErrorKey } from './validation'
+import {
+  toSignInIdentifier,
+  validateSignInIdentifier,
+  type ValidationErrorKey,
+} from './validation'
 
 // Signing in only needs a password to be entered: the length rule applies to new
 // passwords, and Supabase Auth decides whether this one is correct.
@@ -18,7 +22,8 @@ function validatePasswordEntered(value: string): ValidationErrorKey | null {
 export function LoginPage() {
   const { t } = useTranslation()
   const { signIn } = useAuth()
-  const [email, setEmail] = useState('')
+  // An email address or a phone number, see toSignInIdentifier.
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   // Field errors appear after the first submit attempt, then always follow the current
   // values, including a password cleared after a failed sign-in.
@@ -28,12 +33,12 @@ export function LoginPage() {
   // Blocks a second submit before the pending state has re-rendered the form.
   const pendingRef = useRef(false)
 
-  const emailError = submitted ? validateEmail(email) : null
+  const identifierError = submitted ? validateSignInIdentifier(identifier) : null
   const passwordError = submitted ? validatePasswordEntered(password) : null
 
   // Editing a field makes the previous server error out of date.
-  function handleEmailChange(value: string) {
-    setEmail(value)
+  function handleIdentifierChange(value: string) {
+    setIdentifier(value)
     setServerError(null)
   }
 
@@ -47,11 +52,12 @@ export function LoginPage() {
     if (pendingRef.current) return
     setServerError(null)
     setSubmitted(true)
-    if (validateEmail(email) || validatePasswordEntered(password)) return
+    const parsed = toSignInIdentifier(identifier)
+    if (parsed === null || validatePasswordEntered(password)) return
 
     pendingRef.current = true
     setPending(true)
-    const result = await signIn(email.trim(), password)
+    const result = await signIn(parsed, password)
     pendingRef.current = false
     setPending(false)
 
@@ -78,17 +84,18 @@ export function LoginPage() {
       }
     >
       <form noValidate onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
+        {/* type="text": an email keyboard would make typing a phone number awkward. */}
         <TextField
-          label={t('auth.fields.email')}
-          type="email"
-          name="email"
-          autoComplete="email"
-          inputMode="email"
+          label={t('auth.fields.signInId')}
+          type="text"
+          name="username"
+          autoComplete="username"
           autoCapitalize="none"
+          autoCorrect="off"
           spellCheck={false}
-          value={email}
-          onChange={(event) => handleEmailChange(event.target.value)}
-          error={emailError && t(emailError)}
+          value={identifier}
+          onChange={(event) => handleIdentifierChange(event.target.value)}
+          error={identifierError && t(identifierError)}
           disabled={pending}
         />
         <PasswordInput
@@ -100,6 +107,14 @@ export function LoginPage() {
           error={passwordError && t(passwordError)}
           disabled={pending}
         />
+        <div className="-mt-2 text-right">
+          <Link
+            to={PATHS.forgotPassword}
+            className="text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
+          >
+            {t('auth.login.forgotPassword')}
+          </Link>
+        </div>
 
         {serverError && (
           <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">

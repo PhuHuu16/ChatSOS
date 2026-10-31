@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { LoadingScreen } from './components/LoadingScreen'
 import { AppShell } from './components/layout/AppShell'
 import { AuthProvider } from './features/auth/AuthProvider'
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage'
 import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { useAuth } from './features/auth/useAuth'
@@ -24,6 +25,7 @@ function AuthRoutes() {
   if (status === 'loading' || redirect) return <LoadingScreen />
   if (pathname === PATHS.login) return <LoginPage />
   if (pathname === PATHS.register) return <RegisterPage />
+  if (pathname === PATHS.forgotPassword) return <ForgotPasswordPage />
   return <AppShell />
 }
 
