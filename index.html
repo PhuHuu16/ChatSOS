@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ChatSOS</title>
+    <script>
+      // Light or dark before the first paint, so a dark page does not flash white.
+      // Same rules as src/lib/theme.ts, which takes over once the app loads.
+      ;(function () {
+        var stored = null
+        try {
+          stored = localStorage.getItem('chatsos.theme')
+        } catch (e) {}
+        var systemDark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)
+        var dark = stored === 'dark' || (stored !== 'light' && systemDark)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

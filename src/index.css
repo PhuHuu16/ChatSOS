@@ -1,6 +1,14 @@
 @import "tailwindcss";
 
+/* `dark:` follows the theme chosen in the app (src/lib/theme.ts), not only the OS setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
+  --font-sans:
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Old brand colours: still used by screens not yet moved to the tokens below. */
   --color-brand-50: #e8f4fd;
   --color-brand-100: #cfe8fb;
   --color-brand-500: #2aabee;
@@ -8,7 +16,95 @@
   --color-brand-700: #1c87ba;
 }
 
+/* Colours by role. Each utility (bg-canvas, text-muted, border-line, …) reads a variable
+   whose value depends on the light or dark theme. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-solid: var(--danger-solid);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-overlay: var(--overlay);
+  --color-side: var(--side);
+  --color-side-hover: var(--side-hover);
+  --color-side-line: var(--side-line);
+  --color-side-fg: var(--side-fg);
+  --color-side-muted: var(--side-muted);
+}
+
 @layer base {
+  :root {
+    color-scheme: light;
+    --canvas: #ffffff;
+    --surface: #ffffff;
+    --subtle: #f4f4f5;
+    --hover: #fafafa;
+    --line: #e4e4e7;
+    --line-strong: #d4d4d8;
+    --fg: #18181b;
+    --muted: #52525b;
+    --accent: #0b72b9;
+    --accent-hover: #095f9a;
+    --accent-fg: #0a5f9b;
+    --accent-soft: #e8f2fa;
+    --danger: #b91c1c;
+    --danger-soft: #fef2f2;
+    --danger-solid: #b91c1c;
+    --success: #047857;
+    --success-soft: #ecfdf5;
+    --warning: #92400e;
+    --warning-soft: #fffbeb;
+    --overlay: rgb(24 24 27 / 0.45);
+    --side: #18181b;
+    --side-hover: #27272a;
+    --side-line: #2e2e33;
+    --side-fg: #e4e4e7;
+    --side-muted: #a1a1aa;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #18181b;
+    --surface: #1f1f23;
+    --subtle: #232327;
+    --hover: #1f1f23;
+    --line: #2e2e33;
+    --line-strong: #3f3f46;
+    --fg: #f4f4f5;
+    --muted: #a1a1aa;
+    --accent: #1a7fc4;
+    --accent-hover: #1672b0;
+    --accent-fg: #7cc0f0;
+    --accent-soft: #132c40;
+    --danger: #f87171;
+    --danger-soft: #3a1717;
+    --danger-solid: #dc2626;
+    --success: #34d399;
+    --success-soft: #0f2e24;
+    --warning: #fbbf24;
+    --warning-soft: #3a2a0c;
+    --overlay: rgb(0 0 0 / 0.6);
+    --side: #0e0e10;
+    --side-hover: #1c1c20;
+    --side-line: #232327;
+    --side-fg: #e4e4e7;
+    --side-muted: #a1a1aa;
+  }
+
   html,
   body,
   #root {

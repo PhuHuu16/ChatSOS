@@ -1,6 +1,7 @@
 export const vi = {
   app: { name: 'ChatSOS' },
   language: { label: 'Ngôn ngữ', vi: 'Tiếng Việt', en: 'English' },
+  theme: { button: 'Giao diện: {{value}}', light: 'Sáng', dark: 'Tối', system: 'Theo hệ thống' },
   chat: {
     listLabel: 'Danh sách trò chuyện',
     emptyState: 'Chọn một cuộc trò chuyện để bắt đầu nhắn tin',
