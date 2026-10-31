@@ -51,6 +51,10 @@ interface ChatPanelProps {
   onRead: (conversationId: string, readAt: string) => void
   // The other members' read markers in `conversation`, by user id.
   othersRead: ReadonlyMap<string, string | null>
+  // Opens the group info dialog (groups only).
+  onOpenGroupInfo: () => void
+  // Ids of people the shown messages name but `users` does not know.
+  onUnknownUsers: (ids: string[]) => void
 }
 
 export function ChatPanel({
@@ -75,6 +79,8 @@ export function ChatPanel({
   hidden,
   onHideMessages,
   onRecallMessages,
+  onOpenGroupInfo,
+  onUnknownUsers,
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const typing = useTyping(conversation?.id ?? null, currentUserId, conversation?.memberIds ?? [])
@@ -201,7 +207,7 @@ export function ChatPanel({
           name={title}
           avatarPath={getConversationAvatarPath(conversation, users, currentUserId)}
         />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="truncate font-semibold">{title}</h2>
           <p className="text-sm text-slate-500">
             {conversation.type === 'group'
@@ -209,6 +215,17 @@ export function ChatPanel({
               : t('chat.direct')}
           </p>
         </div>
+        {conversation.type === 'group' && (
+          <button
+            type="button"
+            onClick={onOpenGroupInfo}
+            aria-label={t('chat.groupInfo')}
+            title={t('chat.groupInfo')}
+            className="shrink-0 rounded-full px-2 py-1 text-lg leading-none text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          >
+            <span aria-hidden="true">ⓘ</span>
+          </button>
+        )}
       </header>
 
       <MessageList
@@ -234,6 +251,7 @@ export function ChatPanel({
         onRetry={onRetry}
         onDiscard={onDiscard}
         onRead={onRead}
+        onUnknownUsers={onUnknownUsers}
       />
 
       {errorHere && (

@@ -14,6 +14,15 @@ realtime dùng [Supabase](https://supabase.com). Giao diện tiếng Việt và 
   các thiết bị khác đang đăng nhập tài khoản đó bị đăng xuất.
 - Tìm người dùng theo tên hoặc đúng số điện thoại để chat riêng; tạo nhóm có tên và
   thành viên. Số điện thoại không bao giờ hiện cho người khác.
+- Quản lý nhóm (nút ⓘ ở đầu khung chat nhóm), tối đa 50 thành viên:
+  - Mọi thành viên đổi được tên nhóm và thêm người.
+  - Chỉ trưởng nhóm xoá được thành viên và chuyển quyền trưởng nhóm cho người khác.
+  - Ai cũng rời nhóm được. Trưởng nhóm rời thì quyền tự chuyển cho người vào nhóm sớm
+    nhất; người cuối cùng rời thì nhóm và mọi tin nhắn bị xoá.
+  - Mỗi thay đổi hiện thành một dòng trong chat, ví dụ "An đã thêm Bình vào nhóm". Các dòng
+    này không sửa hay xoá được và không tính là tin chưa đọc.
+  - Người mới vào nhóm (kể cả được thêm lại) chỉ thấy tin và tệp từ lúc vào.
+  - Người bị xoá khỏi nhóm mất quyền đọc ngay, và nhóm biến mất khỏi danh sách của họ.
 - Có giới hạn số lần thử: 5 lần đăng nhập bằng một số điện thoại mỗi 15 phút, 20 lần tìm
   theo số điện thoại mỗi người mỗi 10 phút.
 - Người quản trị xem danh sách tài khoản (hồ sơ, số điện thoại, hoạt động) trong
@@ -59,7 +68,7 @@ React 19, TypeScript, Vite, Tailwind CSS v4, i18next, supabase-js
 
 ### 1. Database Supabase
 
-Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 11 file trong
+Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 12 file trong
 `supabase/migrations/`, mỗi lần một file, theo đúng thứ tự tên file:
 
 1. `20261016000100_profiles.sql`: hồ sơ người dùng.
@@ -76,12 +85,15 @@ Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 11 file tron
     lúc đăng ký, tìm theo số điện thoại, view `admin.users`.
 11. `20261101000100_rate_limits.sql`: giới hạn số lần đăng nhập bằng số điện thoại và số
     lần tìm theo số điện thoại.
+12. `20261102000100_group_management.sql`: đổi tên nhóm, thêm, xoá thành viên, chuyển quyền
+    trưởng nhóm, rời nhóm, tin hệ thống; thành viên chỉ đọc tin từ lúc vào nhóm.
 
 Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì. Sau đó chạy
 `supabase/tests/verify_schema.sql` (chỉ đọc); dòng `== ALL CHECKS PASSED ==` phải
 là `true`. Có thể chạy thêm `supabase/tests/rate_limits_behaviour.sql` để thử các giới
 hạn: script luôn kết thúc bằng một lỗi có chữ `ALL n CHECKS PASSED` hoặc `FAILED`, và
-mọi thứ nó ghi đều được rollback.
+mọi thứ nó ghi đều được rollback. `supabase/tests/group_management_behaviour.sql` thử phần
+quản lý nhóm theo cùng cách. Script này cần 4 tài khoản thử `gd7_test1` … `gd7_test4`.
 
 Kiểm tra thêm trong Dashboard: **Settings → Data API → Exposed schemas** không được
 có `private`.
@@ -99,6 +111,10 @@ Gỡ migration 11 bằng `supabase/rollbacks/20261101000100_rate_limits_rollback
 `supabase/rollbacks/20261031000100_phone_and_admin_users_rollback.sql`, sau khi đã tắt
 hook *Before User Created*. Script tự từ chối khi còn hồ sơ có số điện thoại; hướng dẫn
 chi tiết nằm ở đầu từng file.
+
+Gỡ migration 12 bằng `supabase/rollbacks/20261102000100_group_management_rollback.sql`.
+Script tự từ chối khi còn tin hệ thống ("A đã thêm B"), vì chúng không hợp với quy tắc tin
+nhắn cũ. Sau khi gỡ, thành viên lại đọc được cả tin gửi trước lúc họ vào nhóm.
 
 ### 2. Cấu hình Auth trong Dashboard
 
@@ -208,8 +224,10 @@ supabase/
 - Quá 2 phút thì không sửa hay xoá tin với mọi người được nữa (có chủ đích).
 - "Xoá ở phía tôi" và xoá cuộc trò chuyện không hoàn tác được. Ở tab hoặc thiết bị khác
   của cùng tài khoản, tin hay cuộc trò chuyện vừa xoá chỉ biến mất sau khi tải lại.
-- Không có chức năng xoá hẳn cuộc trò chuyện hay rời nhóm; muốn xoá hẳn phải dùng
-  **Dashboard**.
+- Chat riêng không xoá hẳn được (muốn xoá phải dùng **Dashboard**). Nhóm chỉ bị xoá hẳn
+  khi thành viên cuối cùng rời nhóm.
+- Ảnh và tệp của một nhóm đã bị xoá vẫn còn trên Storage. Không có cơ chế tự dọn; xoá
+  trong **Dashboard → Storage → attachments**.
 - Người khác chỉ thấy tên và ảnh đại diện mới khi danh sách chat của họ tải lại.
 - Ảnh đại diện không dùng nữa có thể còn lại trên Storage khi mất mạng lúc lưu hoặc
   lúc xoá ảnh cũ (app báo rõ khi việc này xảy ra). Không có cơ chế tự dọn; xoá trong

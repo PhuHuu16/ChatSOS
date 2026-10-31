@@ -14,6 +14,23 @@ export function findUser(users: User[], id: string): User | undefined {
   return users.find((user) => user.id === id)
 }
 
+// Everyone `messages` name: their senders and the members their system messages are about.
+// Former members are among them, so the list of current members may not know them.
+export function messageUserIds(messages: Message[]): string[] {
+  const ids = new Set<string>()
+  for (const message of messages) {
+    ids.add(message.senderId)
+    if (message.system?.targetId) ids.add(message.system.targetId)
+  }
+  return [...ids]
+}
+
+// The ids `messages` name that `users` does not know yet, e.g. people who left a group.
+export function unknownUserIds(messages: Message[], users: User[]): string[] {
+  const known = new Set(users.map((user) => user.id))
+  return messageUserIds(messages).filter((id) => !known.has(id))
+}
+
 export function getConversationTitle(
   conversation: Conversation,
   users: User[],
@@ -96,7 +113,8 @@ export function laterReadMarker(
 
 // Unread count per conversation: the unread messages loaded with the list plus messages
 // from others received since, minus those at or before the read marker. `readMarkers`
-// holds markers set in this session, which may be newer than the loaded ones.
+// holds markers set in this session, which may be newer than the loaded ones. System
+// messages never count, like in the loaded list.
 export function countUnread(
   conversations: Conversation[],
   unread: UnreadMessage[],
@@ -110,7 +128,10 @@ export function countUnread(
     readAt.set(conversation.id, marker === null ? -Infinity : timestampMicros(marker))
   }
   const idsByConversation = new Map<string, Set<string>>()
-  const candidates = [...unread, ...live.filter((message) => message.senderId !== currentUserId)]
+  const candidates = [
+    ...unread,
+    ...live.filter((message) => message.senderId !== currentUserId && message.kind !== 'system'),
+  ]
   for (const message of candidates) {
     const marker = readAt.get(message.conversationId)
     if (marker === undefined || timestampMicros(message.createdAt) <= marker) continue

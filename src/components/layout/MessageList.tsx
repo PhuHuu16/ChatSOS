@@ -14,10 +14,12 @@ import {
   mergeMessages,
   readersOf,
   timestampMicros,
+  unknownUserIds,
   withLiveMessages,
   withoutHidden,
   withUpdates,
 } from '../../features/chat/helpers'
+import { systemMessageText } from '../../features/chat/systemText'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import type { PendingMessage } from '../../features/chat/useOutgoingMessages'
@@ -61,6 +63,8 @@ interface MessageListProps {
   onDiscard: (message: PendingMessage) => void
   // The user has seen the conversation up to the message created at `readAt`.
   onRead: (conversationId: string, readAt: string) => void
+  // Ids of people the shown messages name but `users` does not know (e.g. who left).
+  onUnknownUsers: (ids: string[]) => void
 }
 
 interface OlderMessages {
@@ -114,6 +118,7 @@ export function MessageList({
   onRetry,
   onDiscard,
   onRead,
+  onUnknownUsers,
 }: MessageListProps) {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
@@ -172,10 +177,12 @@ export function MessageList({
   // Changes when a pending message fails or is retried, which changes its height.
   const pendingStatuses = pendingHere.map((message) => message.status).join()
   const newest = loaded ? shown.at(-1) : undefined
-  // "Sent" / "Seen" under the newest message, when it is the user's own and confirmed.
+  // "Sent" / "Seen" under the newest message, when it is the user's own and confirmed (a
+  // system line, e.g. "You renamed the group", gets none).
   const receiptFor =
     newest &&
     newest.senderId === currentUserId &&
+    newest.kind !== 'system' &&
     newest.deletedAt === null &&
     pendingHere.length === 0
       ? newest
@@ -202,6 +209,7 @@ export function MessageList({
       ? shown.find(
           (message) =>
             message.senderId !== currentUserId &&
+            message.kind !== 'system' &&
             timestampMicros(message.createdAt) > openMarkerMicros,
         )?.id
       : undefined
@@ -326,6 +334,13 @@ export function MessageList({
     markReadFromEffect()
   }, [newest?.id])
 
+  // Names for people who are no longer members (system lines, older messages).
+  const unknownIds = unknownUserIds(shown, users).join()
+  const reportUnknown = useEffectEvent((ids: string) => onUnknownUsers(ids.split(',')))
+  useEffect(() => {
+    if (unknownIds) reportUnknown(unknownIds)
+  }, [unknownIds])
+
   // Messages that arrived while the tab was hidden are read once it is shown again.
   useEffect(() => {
     const handleVisibility = () => markReadFromEffect()
@@ -372,6 +387,32 @@ export function MessageList({
         )}
         <ol className={`flex flex-col gap-2 ${positioned ? '' : 'invisible'}`}>
           {shown.map((message) => {
+            const divider = message.id === firstUnreadId && (
+              <li
+                role="separator"
+                aria-label={t('chat.unreadDivider')}
+                className="my-2 flex items-center gap-3 text-xs font-medium text-brand-700 before:h-px before:flex-1 before:bg-brand-100 after:h-px after:flex-1 after:bg-brand-100"
+              >
+                {t('chat.unreadDivider')}
+              </li>
+            )
+            // "A added B": a centred line, never edited, recalled or selected.
+            if (message.system) {
+              return (
+                <Fragment key={message.id}>
+                  {divider}
+                  <li data-message-id={message.id} className="flex justify-center">
+                    <p className="max-w-[85%] rounded-full bg-slate-100 px-3 py-1 text-center text-xs text-slate-600">
+                      {systemMessageText(t, message, users, currentUserId)}
+                      {' · '}
+                      <time dateTime={message.createdAt}>
+                        {formatTime(message.createdAt, language)}
+                      </time>
+                    </p>
+                  </li>
+                </Fragment>
+              )
+            }
             const isMine = message.senderId === currentUserId
             const senderName =
               isGroup && !isMine ? findUser(users, message.senderId)?.displayName : undefined
@@ -447,15 +488,7 @@ export function MessageList({
 
             return (
               <Fragment key={message.id}>
-                {message.id === firstUnreadId && (
-                  <li
-                    role="separator"
-                    aria-label={t('chat.unreadDivider')}
-                    className="my-2 flex items-center gap-3 text-xs font-medium text-brand-700 before:h-px before:flex-1 before:bg-brand-100 after:h-px after:flex-1 after:bg-brand-100"
-                  >
-                    {t('chat.unreadDivider')}
-                  </li>
-                )}
+                {divider}
                 <li
                   data-message-id={message.id}
                   // While selecting, a click anywhere on the row toggles it; the checkbox is
@@ -491,7 +524,7 @@ export function MessageList({
                       <p className="text-slate-500 italic">{t('chat.recalled')}</p>
                     ) : (
                       <>
-                        {message.attachment && message.kind !== 'text' && (
+                        {message.attachment && (message.kind === 'image' || message.kind === 'file') && (
                           <AttachmentView
                             kind={message.kind}
                             attachment={message.attachment}

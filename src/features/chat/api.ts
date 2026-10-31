@@ -4,12 +4,15 @@ import { supabase } from '../../lib/supabase'
 import { normalizePhone } from '../auth/validation'
 import type { Database } from '../../types/database'
 import { toChatErrorKey, type ChatAction, type ChatErrorKey } from './chatErrors'
+import { messageUserIds } from './helpers'
 import type {
   Attachment,
   Conversation,
   MemberRead,
   Message,
   Profile,
+  Removal,
+  SystemEvent,
   UnreadMessage,
   User,
 } from './types'
@@ -28,6 +31,8 @@ type MessageRow = Pick<
   | 'created_at'
   | 'edited_at'
   | 'deleted_at'
+  | 'system_event'
+  | 'system_target_id'
 >
 
 // Same limit as the messages_content_length check (char_length counts code points).
@@ -39,7 +44,7 @@ export const UNREAD_LIMIT = 100
 const PROFILE_BATCH_SIZE = 100
 
 const MESSAGE_COLUMNS =
-  'id, conversation_id, sender_id, kind, content, attachment_path, attachment_name, attachment_size, attachment_mime, created_at, edited_at, deleted_at'
+  'id, conversation_id, sender_id, kind, content, attachment_path, attachment_name, attachment_size, attachment_mime, created_at, edited_at, deleted_at, system_event, system_target_id'
 
 export type ChatResult<T> = { ok: true; data: T } | { ok: false; error: ChatErrorKey }
 
@@ -72,23 +77,45 @@ function toAttachment(row: MessageRow): Attachment | null {
 }
 
 function toMessage(row: MessageRow): Message {
-  return {
+  const message: Message = {
     id: row.id,
     conversationId: row.conversation_id,
     senderId: row.sender_id,
     kind: row.kind,
     content: row.content,
-    attachment: row.kind === 'text' ? null : toAttachment(row),
+    attachment: row.kind === 'image' || row.kind === 'file' ? toAttachment(row) : null,
     createdAt: row.created_at,
     editedAt: row.edited_at,
     deletedAt: row.deleted_at,
   }
+  // The messages_kind_consistency check sets system_event exactly for system messages.
+  if (row.kind === 'system' && row.system_event !== null) {
+    message.system = { event: row.system_event, targetId: row.system_target_id }
+  }
+  return message
 }
 
-const MESSAGE_KINDS: ReadonlySet<string> = new Set<MessageRow['kind']>(['text', 'image', 'file'])
+const MESSAGE_KINDS: ReadonlySet<string> = new Set<MessageRow['kind']>([
+  'text',
+  'image',
+  'file',
+  'system',
+])
 
 function isMessageKind(kind: string): kind is MessageRow['kind'] {
   return MESSAGE_KINDS.has(kind)
+}
+
+const SYSTEM_EVENTS: ReadonlySet<string> = new Set<SystemEvent>([
+  'member_added',
+  'member_removed',
+  'member_left',
+  'title_changed',
+  'owner_changed',
+])
+
+function isSystemEvent(event: unknown): event is SystemEvent {
+  return typeof event === 'string' && SYSTEM_EVENTS.has(event)
 }
 
 // The new row of a Realtime INSERT or UPDATE event on messages, or null when the event
@@ -127,10 +154,25 @@ export function parseMessageRow(value: unknown): Message | null {
     created_at,
     edited_at: time(row.edited_at),
     deleted_at: time(row.deleted_at),
+    system_event: isSystemEvent(row.system_event) ? row.system_event : null,
+    system_target_id: text(row.system_target_id),
   })
   // An image or file message without its attachment cannot be shown, unless recalled.
-  if (kind !== 'text' && message.attachment === null && message.deletedAt === null) return null
+  const hasFile = kind === 'image' || kind === 'file'
+  if (hasFile && message.attachment === null && message.deletedAt === null) return null
+  // Nor a system message without a known event (e.g. one added by a newer migration).
+  if (kind === 'system' && !message.system) return null
   return message
+}
+
+// The row of a Realtime event on conversation_removals, or null when it has no usable row.
+// Realtime sends the user only their own rows (RLS).
+export function parseRemovalRow(value: unknown): Removal | null {
+  if (typeof value !== 'object' || value === null) return null
+  const { conversation_id, removed_at } = value as Record<string, unknown>
+  if (typeof conversation_id !== 'string' || typeof removed_at !== 'string') return null
+  if (Number.isNaN(Date.parse(removed_at))) return null
+  return { conversationId: conversation_id, removedAt: removed_at }
 }
 
 // The row of a Realtime event on conversation_members, or null when it has no usable row.
@@ -146,6 +188,30 @@ function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = []
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
   return chunks
+}
+
+// The profiles of these users. Any signed-in user can read every profile, so this also
+// names people who have left a group, e.g. in its system messages. Deleted accounts are
+// simply missing from the answer.
+export async function fetchUsers(ids: string[]): Promise<ChatResult<User[]>> {
+  const unique = [...new Set(ids)]
+  const responses = await Promise.all(
+    chunk(unique, PROFILE_BATCH_SIZE).map((batch) =>
+      supabase.from('profiles').select('id, display_name, avatar_path').in('id', batch),
+    ),
+  )
+  const users: User[] = []
+  for (const response of responses) {
+    if (response.error) return fail(response, 'load')
+    for (const profile of response.data) {
+      users.push({
+        id: profile.id,
+        displayName: profile.display_name,
+        avatarPath: profile.avatar_path,
+      })
+    }
+  }
+  return { ok: true, data: users }
 }
 
 // `userId` is the signed-in user: it picks their read markers and leaves out their own
@@ -165,7 +231,7 @@ export async function fetchConversationList(
   // RLS returns the members of the caller's conversations only.
   const membersResponse = await supabase
     .from('conversation_members')
-    .select('conversation_id, user_id, last_read_at')
+    .select('conversation_id, user_id, role, last_read_at')
   if (membersResponse.error) return fail(membersResponse, 'load')
 
   // RLS returns the caller's own marks only.
@@ -178,7 +244,10 @@ export async function fetchConversationList(
   const memberIdsByConversation = new Map<string, string[]>()
   const lastReadAt = new Map<string, string | null>()
   const memberReadAt = new Map<string, Record<string, string | null>>()
+  // The conversation_members_one_owner index allows one owner per group.
+  const ownerId = new Map<string, string>()
   for (const member of membersResponse.data) {
+    if (member.role === 'owner') ownerId.set(member.conversation_id, member.user_id)
     const ids = memberIdsByConversation.get(member.conversation_id) ?? []
     ids.push(member.user_id)
     memberIdsByConversation.set(member.conversation_id, ids)
@@ -186,24 +255,6 @@ export async function fetchConversationList(
     reads[member.user_id] = member.last_read_at
     memberReadAt.set(member.conversation_id, reads)
     if (member.user_id === userId) lastReadAt.set(member.conversation_id, member.last_read_at)
-  }
-
-  const userIds = [...new Set(membersResponse.data.map((member) => member.user_id))]
-  const profileResponses = await Promise.all(
-    chunk(userIds, PROFILE_BATCH_SIZE).map((ids) =>
-      supabase.from('profiles').select('id, display_name, avatar_path').in('id', ids),
-    ),
-  )
-  const users: User[] = []
-  for (const response of profileResponses) {
-    if (response.error) return fail(response, 'load')
-    for (const profile of response.data) {
-      users.push({
-        id: profile.id,
-        displayName: profile.display_name,
-        avatarPath: profile.avatar_path,
-      })
-    }
   }
 
   // One small request per conversation that has messages: PostgREST has no
@@ -228,7 +279,16 @@ export async function fetchConversationList(
     if (row) lastMessages.push(toMessage(row))
   }
 
+  // Every member, plus whoever a last message names who is no longer a member.
+  const usersResponse = await fetchUsers([
+    ...membersResponse.data.map((member) => member.user_id),
+    ...messageUserIds(lastMessages),
+  ])
+  if (!usersResponse.ok) return usersResponse
+  const users = usersResponse.data
+
   // Only conversations with a message after the read marker can have unread messages.
+  // System messages ("A added B") never count as unread.
   const unreadResponses = await Promise.all(
     rows
       .filter((row) => {
@@ -243,6 +303,7 @@ export async function fetchConversationList(
           .select('id, conversation_id, created_at')
           .eq('conversation_id', row.id)
           .neq('sender_id', userId)
+          .neq('kind', 'system')
         if (readAt !== null) query = query.gt('created_at', readAt)
         return query.order('created_at', { ascending: false }).limit(UNREAD_LIMIT)
       }),
@@ -263,6 +324,7 @@ export async function fetchConversationList(
       type: row.type,
       title: row.title,
       memberIds: memberIdsByConversation.get(row.id) ?? [],
+      ownerId: row.type === 'group' ? (ownerId.get(row.id) ?? null) : null,
       lastActivityAt: row.last_message_at ?? row.created_at,
       lastReadAt: lastReadAt.get(row.id) ?? null,
       memberReadAt: memberReadAt.get(row.id) ?? {},
@@ -522,8 +584,19 @@ export type GroupCheckErrorKey =
 
 export type GroupCheck = { ok: true; title: string } | { ok: false; error: GroupCheckErrorKey }
 
-// `memberIds` are the OTHER members; the creator is added by the database.
-export function checkGroupInput(title: string, memberIds: string[]): GroupCheck {
+export type GroupTitleCheck =
+  | { ok: true; title: string }
+  | {
+      ok: false
+      error:
+        | 'chat.errors.groupTitleRequired'
+        | 'chat.errors.groupTitleTooLong'
+        | 'chat.errors.groupTitleInvalid'
+    }
+
+// The title rules of create_group_conversation and rename_group: trimmed, 1 to
+// GROUP_TITLE_MAX_LENGTH code points, no control characters.
+export function checkGroupTitle(title: string): GroupTitleCheck {
   const trimmed = title.trim()
   if (trimmed === '') return { ok: false, error: 'chat.errors.groupTitleRequired' }
   if ([...trimmed].length > GROUP_TITLE_MAX_LENGTH) {
@@ -531,6 +604,14 @@ export function checkGroupInput(title: string, memberIds: string[]): GroupCheck 
   }
   // eslint-disable-next-line no-control-regex -- control characters are what is rejected
   if (/[\u0000-\u001f\u007f]/.test(trimmed)) return { ok: false, error: 'chat.errors.groupTitleInvalid' }
+  return { ok: true, title: trimmed }
+}
+
+// `memberIds` are the OTHER members; the creator is added by the database.
+export function checkGroupInput(title: string, memberIds: string[]): GroupCheck {
+  const checked = checkGroupTitle(title)
+  if (!checked.ok) return checked
+  const trimmed = checked.title
   if (memberIds.length === 0) return { ok: false, error: 'chat.errors.groupNoMembers' }
   if (memberIds.length + 1 > GROUP_MAX_MEMBERS) {
     return { ok: false, error: 'chat.errors.groupTooManyMembers' }
@@ -552,6 +633,80 @@ export async function createGroupChat(
   })
   if (response.error) return fail(response, 'create')
   return { ok: true, data: response.data }
+}
+
+// Group management (migration 12). Each change is one RPC that locks the group, checks
+// the caller's role and writes the matching system message. Every member may rename the
+// group and add people; only the owner removes members or hands the group over. Repeating
+// a change that already happened (same title, someone already added or already removed)
+// changes nothing, so retrying after a lost answer is safe.
+
+// Returns the stored (trimmed) title.
+export async function renameGroup(
+  conversationId: string,
+  title: string,
+): Promise<ChatResult<string>> {
+  const checked = checkGroupTitle(title)
+  if (!checked.ok) return checked
+  const response = await supabase.rpc('rename_group', {
+    p_conversation_id: conversationId,
+    p_title: checked.title,
+  })
+  if (response.error) return fail(response, 'group')
+  return { ok: true, data: checked.title }
+}
+
+// `userIds` are the users to add; those already in the group are skipped. The group may
+// then have GROUP_MAX_MEMBERS members at most, or nobody is added (chat.errors.groupFull).
+// Returns how many were added.
+export async function addGroupMembers(
+  conversationId: string,
+  userIds: string[],
+): Promise<ChatResult<number>> {
+  const uniqueIds = [...new Set(userIds)]
+  if (uniqueIds.length === 0) return { ok: false, error: 'chat.errors.groupNoMembers' }
+  if (uniqueIds.length > GROUP_MAX_MEMBERS - 1) return { ok: false, error: 'chat.errors.groupFull' }
+  const response = await supabase.rpc('add_group_members', {
+    p_conversation_id: conversationId,
+    p_user_ids: uniqueIds,
+  })
+  if (response.error) return fail(response, 'group')
+  return { ok: true, data: response.data }
+}
+
+// Owner only. The removed member loses access at once and is told through Realtime.
+export async function removeGroupMember(
+  conversationId: string,
+  userId: string,
+): Promise<ChatResult<null>> {
+  const response = await supabase.rpc('remove_group_member', {
+    p_conversation_id: conversationId,
+    p_user_id: userId,
+  })
+  if (response.error) return fail(response, 'group')
+  return { ok: true, data: null }
+}
+
+// Owner only: `userId` (a member) becomes the owner and the caller a plain member.
+export async function transferGroupOwnership(
+  conversationId: string,
+  userId: string,
+): Promise<ChatResult<null>> {
+  const response = await supabase.rpc('transfer_group_ownership', {
+    p_conversation_id: conversationId,
+    p_user_id: userId,
+  })
+  if (response.error) return fail(response, 'group')
+  return { ok: true, data: null }
+}
+
+// When the owner leaves, the member who joined first becomes the owner. When the last
+// member leaves, the group and its messages are deleted. A member who has already left
+// (e.g. in another tab) gets chat.errors.groupGone.
+export async function leaveGroup(conversationId: string): Promise<ChatResult<null>> {
+  const response = await supabase.rpc('leave_group', { p_conversation_id: conversationId })
+  if (response.error) return fail(response, 'group')
+  return { ok: true, data: null }
 }
 
 // How long after sending the sender may edit or recall a message. The database enforces

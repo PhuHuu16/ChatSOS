@@ -8,6 +8,7 @@ import {
   getLastMessage,
 } from '../../features/chat/helpers'
 import { UNREAD_LIMIT } from '../../features/chat/api'
+import { systemMessageText } from '../../features/chat/systemText'
 import type { Conversation, Message, User } from '../../features/chat/types'
 import type { ChatQueryState } from '../../features/chat/useChatQuery'
 import type { OwnProfile } from '../../features/profile/profileApi'
@@ -170,8 +171,11 @@ export function Sidebar({
             const menuOpen = menuFor === conversation.id
             const menuId = `conversation-menu-${conversation.id}`
 
+            // A system line ("You added B") already names who did it, so it gets none.
             let prefix = ''
-            if (last?.senderId === currentUserId) {
+            if (last?.system) {
+              // No prefix.
+            } else if (last?.senderId === currentUserId) {
               prefix = `${t('chat.you')}: `
             } else if (last && conversation.type === 'group') {
               const sender = findUser(users, last.senderId)
@@ -213,13 +217,15 @@ export function Sidebar({
                       {last && (
                         <span className="min-w-0 truncate text-sm text-slate-500">
                           {prefix}
-                          {last.deletedAt !== null
-                            ? t('chat.recalled')
-                            : last.kind === 'image'
-                              ? `📷 ${t('chat.photo')}`
-                              : last.kind === 'file'
-                                ? `📎 ${last.attachment?.name ?? ''}`
-                                : last.content}
+                          {last.system
+                            ? systemMessageText(t, last, users, currentUserId)
+                            : last.deletedAt !== null
+                              ? t('chat.recalled')
+                              : last.kind === 'image'
+                                ? `📷 ${t('chat.photo')}`
+                                : last.kind === 'file'
+                                  ? `📎 ${last.attachment?.name ?? ''}`
+                                  : last.content}
                         </span>
                       )}
                       {unread > 0 && (

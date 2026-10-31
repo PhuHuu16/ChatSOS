@@ -1,8 +1,10 @@
--- ChatSOS · read-only verification. Run after all 11 migrations (the 5 of Phase 1,
+-- ChatSOS · read-only verification. Run after all 12 migrations (the 5 of Phase 1,
 -- 20261028000100_edit_recall_messages.sql, 20261028000200_typing_and_read_receipts.sql,
 -- 20261029000100_avatars.sql, 20261030000100_delete_messages_and_conversations.sql,
--- 20261031000100_phone_and_admin_users.sql and 20261101000100_rate_limits.sql).
--- Rate-limit behaviour (counting, refusing) is tested by rate_limits_behaviour.sql.
+-- 20261031000100_phone_and_admin_users.sql, 20261101000100_rate_limits.sql and
+-- 20261102000100_group_management.sql).
+-- Rate-limit behaviour (counting, refusing) is tested by rate_limits_behaviour.sql, group
+-- management (RPCs, system messages, history since joining) by group_management_behaviour.sql.
 -- A single SELECT: it changes nothing (the functions it calls only read). Failing checks
 -- are listed first, and the "== ALL CHECKS PASSED ==" row is true only when every check
 -- passed. Needs at least one existing profile (for the "username taken" hook check).
@@ -20,7 +22,8 @@ target_tables (table_name) as (
     ('conversation_members'),
     ('messages'),
     ('message_hides'),
-    ('conversation_clears')
+    ('conversation_clears'),
+    ('conversation_removals')
 ),
 target_roles (role_name) as (
   values ('anon'), ('authenticated')
@@ -53,7 +56,8 @@ allowed_privileges (role_name, table_name, privilege, column_name) as (
     ('authenticated', 'messages', 'UPDATE', 'deleted_at'),
     ('authenticated', 'message_hides', 'SELECT', null),
     ('authenticated', 'message_hides', 'INSERT', 'message_id'),
-    ('authenticated', 'conversation_clears', 'SELECT', null)
+    ('authenticated', 'conversation_clears', 'SELECT', null),
+    ('authenticated', 'conversation_removals', 'SELECT', null)
 ),
 -- Every table-level privilege, for every role and table.
 table_privilege_matrix as (
@@ -104,8 +108,8 @@ privilege_matrix as (
   union all
   select * from column_privilege_matrix
 ),
--- security_definer false only for the helpers normalize_vn_phone and hit_rate_limit, which
--- run inside the definer functions that call them.
+-- security_definer false only for the helpers normalize_vn_phone, hit_rate_limit and
+-- lock_group, which run inside the definer functions that call them.
 expected_functions (signature, authenticated_can_execute, security_definer) as (
   values
     ('public.handle_new_user()', false, true),
@@ -127,7 +131,15 @@ expected_functions (signature, authenticated_can_execute, security_definer) as (
     ('public.find_profile_by_phone(text)', true, true),
     ('private.hit_rate_limit(text, interval, integer)', false, false),
     ('public.phone_sign_in_check(text, text)', false, true),
-    ('public.phone_sign_in_succeeded(text)', false, true)
+    ('public.phone_sign_in_succeeded(text)', false, true),
+    ('private.member_since(uuid)', true, true),
+    ('private.can_read_attachment(text)', true, true),
+    ('private.lock_group(uuid)', false, false),
+    ('public.rename_group(uuid, text)', true, true),
+    ('public.add_group_members(uuid, uuid[])', true, true),
+    ('public.remove_group_member(uuid, uuid)', true, true),
+    ('public.transfer_group_ownership(uuid, uuid)', true, true),
+    ('public.leave_group(uuid)', true, true)
 ),
 functions as (
   select e.signature, e.authenticated_can_execute, e.security_definer, p.oid, p.prosecdef, p.proconfig, p.proacl
@@ -159,18 +171,22 @@ expected_policies (schema_name, table_name, policy_name, command, expected_using
       '(user_id = ( SELECT auth.uid() AS uid))',
       '(user_id = ( SELECT auth.uid() AS uid))'),
     -- Replaced in migration 9: "members can read", minus the messages the caller hid and
-    -- those up to when the caller cleared the conversation.
-    ('public', 'messages', 'messages: members read what they have not deleted', 'SELECT',
-      E'(private.is_member(conversation_id) AND (NOT (EXISTS ( SELECT 1\n   FROM message_hides h\n  WHERE ((h.message_id = messages.id) AND (h.user_id = ( SELECT auth.uid() AS uid)))))) AND (NOT (EXISTS ( SELECT 1\n   FROM conversation_clears c\n  WHERE ((c.conversation_id = messages.conversation_id) AND (c.user_id = ( SELECT auth.uid() AS uid)) AND (messages.created_at <= c.cleared_at))))))',
+    -- those up to when the caller cleared the conversation. Replaced again in migration 12:
+    -- "is a member" became "sent since the caller joined" (written by hand in the printed
+    -- form; compare the detail column if it fails).
+    ('public', 'messages', 'messages: members read what was sent since they joined', 'SELECT',
+      E'((created_at >= private.member_since(conversation_id)) AND (NOT (EXISTS ( SELECT 1\n   FROM message_hides h\n  WHERE ((h.message_id = messages.id) AND (h.user_id = ( SELECT auth.uid() AS uid)))))) AND (NOT (EXISTS ( SELECT 1\n   FROM conversation_clears c\n  WHERE ((c.conversation_id = messages.conversation_id) AND (c.user_id = ( SELECT auth.uid() AS uid)) AND (messages.created_at <= c.cleared_at))))))',
       null::text),
+    -- Migration 12 added "kind <> 'system'".
     ('public', 'messages', 'messages: members send as themselves', 'INSERT',
       null::text,
-      '((sender_id = ( SELECT auth.uid() AS uid)) AND private.is_member(conversation_id))'),
+      '((sender_id = ( SELECT auth.uid() AS uid)) AND (kind <> ''system''::text) AND private.is_member(conversation_id))'),
     ('public', 'messages', 'messages: senders change their own', 'UPDATE',
       '((sender_id = ( SELECT auth.uid() AS uid)) AND private.is_member(conversation_id))',
       '((sender_id = ( SELECT auth.uid() AS uid)) AND private.is_member(conversation_id))'),
-    ('storage', 'objects', 'attachments: members can read', 'SELECT',
-      '((bucket_id = ''attachments''::text) AND private.can_access_attachment(name))',
+    -- Replaced in migration 12 (was "members can read" every file of the folder).
+    ('storage', 'objects', 'attachments: members read files of messages they can see', 'SELECT',
+      '((bucket_id = ''attachments''::text) AND (private.can_read_attachment(name) OR ((owner_id = (( SELECT auth.uid() AS uid))::text) AND private.can_access_attachment(name))))',
       null::text),
     ('storage', 'objects', 'attachments: members can upload new files', 'INSERT',
       null::text,
@@ -205,6 +221,10 @@ expected_policies (schema_name, table_name, policy_name, command, expected_using
       '((user_id = ( SELECT auth.uid() AS uid)) AND private.can_hide_message(message_id))'),
     ('public', 'conversation_clears', 'conversation_clears: users read their own', 'SELECT',
       '(user_id = ( SELECT auth.uid() AS uid))',
+      null::text),
+    -- Migration 12.
+    ('public', 'conversation_removals', 'conversation_removals: users read their own', 'SELECT',
+      '(user_id = ( SELECT auth.uid() AS uid))',
       null::text)
 ),
 expected_constraints (table_name, constraint_name) as (
@@ -225,7 +245,8 @@ expected_constraints (table_name, constraint_name) as (
     ('messages', 'messages_attachment_size_valid'),
     ('messages', 'messages_attachment_type_valid'),
     ('messages', 'messages_image_is_image'),
-    ('messages', 'messages_edited_text_only')
+    ('messages', 'messages_edited_text_only'),
+    ('messages', 'messages_system_event_valid')
 ),
 expected_mime_types (mime) as (
   select unnest(array[
@@ -372,7 +393,7 @@ checks (name, ok, detail) as (
       select count(*)
       from pg_catalog.pg_proc p
       where p.pronamespace = 'private'::regnamespace
-    ) = 12,
+    ) = 15,
     (
       select 'found: ' || coalesce(string_agg(p.oid::regprocedure::text, ', ' order by p.proname), 'none')
       from pg_catalog.pg_proc p
@@ -453,13 +474,13 @@ checks (name, ok, detail) as (
   from expected_policies e
   union all
   select
-    'exactly 11 policies on ChatSOS tables',
+    'exactly 12 policies on ChatSOS tables',
     (
       select count(*)
       from pg_catalog.pg_policies p
       where p.schemaname = 'public'
         and p.tablename in (select table_name from target_tables)
-    ) = 11,
+    ) = 12,
     (
       select 'count: ' || count(*)
       from pg_catalog.pg_policies p
@@ -693,7 +714,7 @@ checks (name, ok, detail) as (
         and pt.tablename = t.table_name
     ),
     null
-  from (values ('messages'), ('conversation_members')) as t (table_name)
+  from (values ('messages'), ('conversation_members'), ('conversation_removals')) as t (table_name)
   union all
   -- Supabase does not check RLS for DELETE events, so none may be published.
   select
@@ -1138,6 +1159,113 @@ checks (name, ok, detail) as (
         'on conflict (bucket, window_start) do update set hits = c.hits + 1'),
       ('private.hit_rate_limit(text, interval, integer)', 'cleanup never waits on locked rows',
         'for update skip locked')
+  ) as frag (signature, label, needle)
+
+  union all
+  -- Migration 12. Printed forms written by hand; not yet captured from the deployed schema,
+  -- so compare the detail column if one fails.
+  select
+    'constraint definition: messages_kind_valid allows system',
+    coalesce((
+      select pg_get_constraintdef(k.oid)
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.messages') and k.conname = 'messages_kind_valid'
+    ) = 'CHECK ((kind = ANY (ARRAY[''text''::text, ''image''::text, ''file''::text, ''system''::text])))', false),
+    (
+      select 'actual: ' || pg_get_constraintdef(k.oid)
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.messages') and k.conname = 'messages_kind_valid'
+    )
+  union all
+  -- Clients cannot write the system columns (privilege matrix above); here, the target's key.
+  select
+    'messages.system_target_id references profiles, on delete set null',
+    exists (
+      select 1
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.messages')
+        and k.contype = 'f'
+        and k.confrelid = to_regclass('public.profiles')
+        and k.confdeltype = 'n'
+        and k.conkey = array[(
+          select a.attnum
+          from pg_catalog.pg_attribute a
+          where a.attrelid = to_regclass('public.messages') and a.attname = 'system_target_id'
+        )]
+    ),
+    null
+  union all
+  select
+    'unique index conversation_members_one_owner',
+    coalesce(
+      pg_get_indexdef(to_regclass('public.conversation_members_one_owner'))
+        = 'CREATE UNIQUE INDEX conversation_members_one_owner ON public.conversation_members USING btree (conversation_id) WHERE (role = ''owner''::text)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_indexdef(to_regclass('public.conversation_members_one_owner')), 'none')
+  union all
+  -- Removal rows disappear with their user, and on purpose not with their conversation.
+  select
+    'conversation_removals has exactly one foreign key: profiles, cascade',
+    coalesce((
+      select count(*) = 1 and bool_and(k.confrelid = to_regclass('public.profiles') and k.confdeltype = 'c')
+      from pg_catalog.pg_constraint k
+      where k.conrelid = to_regclass('public.conversation_removals') and k.contype = 'f'
+    ), false),
+    null
+  union all
+  select
+    'primary key conversation_removals (user_id, conversation_id)',
+    coalesce(
+      pg_get_indexdef(to_regclass('public.conversation_removals_pkey'))
+        = 'CREATE UNIQUE INDEX conversation_removals_pkey ON public.conversation_removals USING btree (user_id, conversation_id)',
+      false
+    ),
+    'actual: ' || coalesce(pg_get_indexdef(to_regclass('public.conversation_removals_pkey')), 'none')
+  union all
+  -- The group functions still contain the conditions the security model relies on.
+  select
+    'function body: ' || frag.signature || ' ' || frag.label,
+    coalesce((
+      select position(frag.needle in p.prosrc) > 0
+      from pg_catalog.pg_proc p
+      where p.oid = to_regprocedure(frag.signature)
+    ), false),
+    null
+  from (
+    values
+      ('private.guard_message_update()', 'refuses changes to system messages',
+        'if old.kind = ''system'' then'),
+      ('private.validate_message_attachment()', 'skips text and system messages',
+        'if new.kind in (''text'', ''system'') then'),
+      ('private.member_since(uuid)', 'reads the caller''s own membership',
+        'and m.user_id = (select auth.uid())'),
+      ('private.can_read_attachment(text)', 'only messages sent since the caller joined',
+        'and msg.created_at >= m.joined_at'),
+      ('private.lock_group(uuid)', 'requires a signed-in caller',
+        'errcode = ''42501'''),
+      ('private.lock_group(uuid)', 'locks groups only',
+        E'and c.type = ''group''\n  for update'),
+      ('private.lock_group(uuid)', 'same error for not a member and not found',
+        'errcode = ''P0002'''),
+      ('public.rename_group(uuid, text)', 'locks the group',
+        'perform private.lock_group(p_conversation_id)'),
+      ('public.add_group_members(uuid, uuid[])', 'locks the group',
+        'perform private.lock_group(p_conversation_id)'),
+      ('public.add_group_members(uuid, uuid[])', 'allows 50 members at most',
+        ') > 50 then'),
+      ('public.add_group_members(uuid, uuid[])', 'refuses a full group with CS002',
+        'errcode = ''CS002'''),
+      ('public.remove_group_member(uuid, uuid)', 'owner only',
+        'if private.lock_group(p_conversation_id) <> ''owner'' then'),
+      ('public.remove_group_member(uuid, uuid)', 'tells the removed member',
+        'values (p_user_id, p_conversation_id)'),
+      ('public.transfer_group_ownership(uuid, uuid)', 'owner only',
+        'if private.lock_group(p_conversation_id) <> ''owner'' then'),
+      ('public.leave_group(uuid)', 'locks the group',
+        'v_role text := private.lock_group(p_conversation_id)'),
+      ('public.leave_group(uuid)', 'hands the group to the member who joined first',
+        'order by m.joined_at, m.user_id')
   ) as frag (signature, label, needle)
 )
 select name, ok, detail

@@ -3,7 +3,7 @@
 // what the authenticated role is GRANTed (verified in step 1B), so the compiler rejects
 // reads and writes the database would refuse: RLS filters rows, it does not hide columns.
 // `never` marks an operation clients have no privilege for. Keep in sync with the migrations.
-import type { ConversationType, MessageKind } from '../features/chat/types'
+import type { ConversationType, MessageKind, SystemEvent } from '../features/chat/types'
 
 export type ConversationRole = 'owner' | 'member'
 
@@ -70,12 +70,16 @@ export type Database = {
           created_at: string
           edited_at: string | null
           deleted_at: string | null
+          // Set exactly for system messages (kind 'system').
+          system_event: SystemEvent | null
+          system_target_id: string | null
         }
-        // sender_id and created_at are not granted: they always take their defaults.
+        // sender_id and created_at are not granted: they always take their defaults. Only
+        // the database writes system messages (no grant on system_*, kind 'system' refused).
         Insert: {
           id?: string
           conversation_id: string
-          kind: MessageKind
+          kind: Exclude<MessageKind, 'system'>
           content?: string
           attachment_path?: string | null
           attachment_name?: string | null
@@ -114,6 +118,18 @@ export type Database = {
         Update: never
         Relationships: []
       }
+      conversation_removals: {
+        Row: {
+          user_id: string
+          // No foreign key: the row outlives a group deleted when its last member leaves.
+          conversation_id: string
+          removed_at: string
+        }
+        // Read only: rows are written by remove_group_member() and leave_group().
+        Insert: never
+        Update: never
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -130,6 +146,27 @@ export type Database = {
       clear_conversation: {
         Args: { p_conversation_id: string }
         Returns: string
+      }
+      rename_group: {
+        Args: { p_conversation_id: string; p_title: string }
+        Returns: undefined
+      }
+      // Returns how many users were added (those already in the group are skipped).
+      add_group_members: {
+        Args: { p_conversation_id: string; p_user_ids: string[] }
+        Returns: number
+      }
+      remove_group_member: {
+        Args: { p_conversation_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      transfer_group_ownership: {
+        Args: { p_conversation_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      leave_group: {
+        Args: { p_conversation_id: string }
+        Returns: undefined
       }
       find_profile_by_phone: {
         Args: { p_phone: string }

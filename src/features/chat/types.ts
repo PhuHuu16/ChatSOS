@@ -1,5 +1,20 @@
 export type ConversationType = 'direct' | 'group'
-export type MessageKind = 'text' | 'image' | 'file'
+export type MessageKind = 'text' | 'image' | 'file' | 'system'
+
+// What a system message records. Only the database writes them (migration 12).
+export type SystemEvent =
+  | 'member_added'
+  | 'member_removed'
+  | 'member_left'
+  | 'title_changed'
+  | 'owner_changed'
+
+export interface SystemInfo {
+  event: SystemEvent
+  // The member added, removed or made owner. null for member_left and title_changed, and
+  // once that account has been deleted.
+  targetId: string | null
+}
 
 export interface User {
   id: string
@@ -19,6 +34,8 @@ export interface Conversation {
   // Only groups have a title; direct chats are named after the other member.
   title: string | null
   memberIds: string[]
+  // The group's owner; null for direct chats.
+  ownerId: string | null
   // ISO 8601: the last message time, or the creation time when there is none yet.
   lastActivityAt: string
   // ISO 8601: the current user's read marker; messages after it are unread. null = none read.
@@ -28,6 +45,14 @@ export interface Conversation {
   // ISO 8601: when the current user deleted this conversation's history for themselves.
   // Messages up to then are hidden from them. null = never.
   clearedAt: string | null
+}
+
+// The current user was removed from a group or left it (maybe in another tab). The group
+// is no longer readable for them, and may no longer exist.
+export interface Removal {
+  conversationId: string
+  // ISO 8601
+  removedAt: string
 }
 
 // A member's read marker, as Realtime reports it.
@@ -61,7 +86,8 @@ export interface Message {
   conversationId: string
   senderId: string
   kind: MessageKind
-  // Empty for image and file messages, and once recalled.
+  // Empty for image and file messages, and once recalled. For system messages: the new
+  // title for title_changed, empty otherwise.
   content: string
   // Set exactly for image and file messages that were not recalled.
   attachment: Attachment | null
@@ -71,4 +97,7 @@ export interface Message {
   editedAt: string | null
   // ISO 8601, when the sender recalled the message; null if not recalled.
   deletedAt: string | null
+  // Set exactly for system messages; the sender is the member who did it. Absent (not
+  // null) otherwise. System messages are never edited or recalled.
+  system?: SystemInfo
 }

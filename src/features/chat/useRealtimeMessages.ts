@@ -1,6 +1,6 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { parseMemberRow, parseMessageRow } from './api'
+import { parseMemberRow, parseMessageRow, parseRemovalRow } from './api'
 import { laterReadMarker, withUpdate } from './helpers'
 import type { MemberRead, Message } from './types'
 
@@ -17,6 +17,15 @@ export interface RealtimeMessages {
   memberReads: ReadonlyMap<string, string>
   // Memberships created since the chat screen opened (new chats, new group members).
   joined: MemberRead[]
+  // Groups the user was removed from or left since the chat screen opened, and has not
+  // been added back to since. They are no longer readable for the user.
+  removed: ReadonlySet<string>
+  // Records that the user left a group here, before Realtime reports it.
+  markRemoved: (conversationId: string) => void
+  // When the user was last removed from or left each group (server time, ISO 8601). If
+  // they are added back, they may see only what came later, as the server already does;
+  // this drops older copies still in memory (received live, or a page loaded before).
+  removedAt: ReadonlyMap<string, string>
   status: RealtimeStatus
 }
 
@@ -25,8 +34,10 @@ export function readKey(conversationId: string, userId: string): string {
   return `${conversationId}:${userId}`
 }
 
-// Listens for new, edited and recalled messages and for membership changes in every conversation the user belongs to. Realtime checks
-// the messages RLS policy for each subscriber, so only members receive a message.
+// Listens for new, edited and recalled messages and for membership changes in every
+// conversation the user belongs to. Realtime checks the RLS policies for each subscriber,
+// so only members receive a message. Realtime sends no DELETE events, so a member removed
+// from a group (or leaving it) learns of it from their own conversation_removals row.
 // `onLive` runs each time the subscription becomes active, including after a
 // reconnect: messages sent while it was not active are never delivered, so the caller
 // reloads what it shows.
@@ -35,6 +46,11 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
   const [updated, setUpdated] = useState<ReadonlyMap<string, Message>>(new Map())
   const [memberReads, setMemberReads] = useState<ReadonlyMap<string, string>>(new Map())
   const [joined, setJoined] = useState<MemberRead[]>([])
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set())
+  const [removedAt, setRemovedAt] = useState<ReadonlyMap<string, string>>(new Map())
+  const markRemoved = useCallback((conversationId: string) => {
+    setRemoved((set) => (set.has(conversationId) ? set : new Set(set).add(conversationId)))
+  }, [])
   const [status, setStatus] = useState<RealtimeStatus>('connecting')
   const handleLive = useEffectEvent(onLive)
 
@@ -66,7 +82,17 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
         (payload) => {
           if (!active || payload.errors?.length) return
           const member = parseMemberRow(payload.new)
-          if (member) setJoined((list) => [...list, member])
+          if (!member) return
+          setJoined((list) => [...list, member])
+          // Added (back) to a group the user had been removed from or left.
+          if (member.userId === userId) {
+            setRemoved((set) => {
+              if (!set.has(member.conversationId)) return set
+              const next = new Set(set)
+              next.delete(member.conversationId)
+              return next
+            })
+          }
         },
       )
       .on(
@@ -85,6 +111,22 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
           })
         },
       )
+      // Written by remove_group_member() and leave_group(); UPDATE when written again.
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversation_removals' },
+        (payload) => {
+          if (!active || payload.errors?.length) return
+          const removal = parseRemovalRow(payload.new)
+          if (!removal) return
+          markRemoved(removal.conversationId)
+          setRemovedAt((map) => {
+            const known = map.get(removal.conversationId)
+            const next = laterReadMarker(known, removal.removedAt)
+            return next === known ? map : new Map(map).set(removal.conversationId, removal.removedAt)
+          })
+        },
+      )
       .subscribe((state) => {
         if (!active) return
         if (state === 'SUBSCRIBED') {
@@ -100,7 +142,7 @@ export function useRealtimeMessages(userId: string, onLive: () => void): Realtim
       active = false
       void supabase.removeChannel(channel)
     }
-  }, [userId])
+  }, [userId, markRemoved])
 
-  return { received, updated, memberReads, joined, status }
+  return { received, updated, memberReads, joined, removed, markRemoved, removedAt, status }
 }

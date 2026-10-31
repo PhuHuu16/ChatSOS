@@ -22,18 +22,21 @@ import {
   laterReadMarker,
   sortByActivity,
   timestampMicros,
+  unknownUserIds,
   withoutHidden,
   withUpdate,
   withUpdates,
 } from '../../features/chat/helpers'
 import type { Conversation, Message } from '../../features/chat/types'
 import { useChatQuery, type ChatQueryState } from '../../features/chat/useChatQuery'
+import { useExtraUsers } from '../../features/chat/useExtraUsers'
 import { clearAttachmentUrls, removeAttachment } from '../../features/chat/attachments'
 import { useOutgoingMessages } from '../../features/chat/useOutgoingMessages'
 import { readKey, useRealtimeMessages } from '../../features/chat/useRealtimeMessages'
 import { clearAvatarUrls } from '../../features/profile/avatars'
 import { fetchOwnProfile, type OwnProfile } from '../../features/profile/profileApi'
 import { DeleteConversationDialog } from '../DeleteConversationDialog'
+import { GroupInfoDialog } from '../GroupInfoDialog'
 import { NewChatDialog, type NewChatMode } from '../NewChatDialog'
 import { ProfileDialog } from '../ProfileDialog'
 import { ChatPanel } from './ChatPanel'
@@ -83,10 +86,16 @@ export function AppShell() {
   // server's mark. Together with the loaded marks they hide the older messages still in
   // memory; the server leaves those out of every later load.
   const [sessionClears, setSessionClears] = useState<ReadonlyMap<string, string>>(new Map())
-  const clears = useMemo(
-    () => clearMarks(listData?.conversations ?? [], sessionClears),
-    [listData, sessionClears],
-  )
+  // A group the user was removed from or left counts the same way from the removal on:
+  // added back, they see only what came after it, as the server already does.
+  const clears = useMemo(() => {
+    const marks = new Map(sessionClears)
+    for (const [conversationId, removedAt] of realtime.removedAt) {
+      const mark = laterReadMarker(marks.get(conversationId), removedAt)
+      if (mark) marks.set(conversationId, mark)
+    }
+    return clearMarks(listData?.conversations ?? [], marks)
+  }, [listData, sessionClears, realtime.removedAt])
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null)
   // Messages sent or received since the list loaded. They move their conversation up and
   // become its last message without reloading the list.
@@ -110,16 +119,19 @@ export function AppShell() {
     [listData, live, updates, hidden, clears],
   )
   // A conversation whose history the user deleted leaves the list until a new message
-  // arrives. The open one stays (e.g. reopened through "New chat").
+  // arrives. The open one stays (e.g. reopened through "New chat"). A group the user was
+  // removed from or left leaves at once, even before the list reloads without it.
   const conversations = useMemo(
     () =>
       sortByActivity(
         (listData?.conversations ?? []).filter(
-          (item) => item.id === selectedId || isListed(item, clears, lastMessages),
+          (item) =>
+            !realtime.removed.has(item.id) &&
+            (item.id === selectedId || isListed(item, clears, lastMessages)),
         ),
         live,
       ),
-    [listData, live, clears, lastMessages, selectedId],
+    [listData, live, clears, lastMessages, selectedId, realtime.removed],
   )
   // The user's own profile. A save or reload in the profile dialog replaces the loaded
   // copy at once, and the new name shows everywhere without reloading the list.
@@ -128,16 +140,25 @@ export function AppShell() {
   const [profileOpen, setProfileOpen] = useState(false)
   const ownProfile =
     ownProfileUpdate ?? (ownProfileQuery.status === 'ready' ? ownProfileQuery.data : null)
+  // Profiles of people the loaded list does not include, e.g. who left a group.
+  const extraUsers = useExtraUsers()
   const users = useMemo(() => {
-    const loaded = listData?.users ?? []
+    const listed = listData?.users ?? []
+    const listedIds = new Set(listed.map((user) => user.id))
+    const loaded = [...listed, ...extraUsers.users.filter((user) => !listedIds.has(user.id))]
     if (!ownProfileUpdate) return loaded
     return loaded.map((user) =>
       user.id === ownProfileUpdate.id
         ? { ...user, displayName: ownProfileUpdate.displayName, avatarPath: ownProfileUpdate.avatarPath }
         : user,
     )
-  }, [listData, ownProfileUpdate])
+  }, [listData, ownProfileUpdate, extraUsers.users])
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
+  // The group whose info dialog is open: always the open conversation. It closes when the
+  // user opens another conversation or the group leaves the list (removed, left).
+  const [groupInfoFor, setGroupInfoFor] = useState<string | null>(null)
+  if (groupInfoFor !== null && selected?.id !== groupInfoFor) setGroupInfoFor(null)
+  const groupInfo = groupInfoFor !== null && selected?.type === 'group' ? selected : null
   const messagesQuery = useChatQuery(selected?.id ?? null, fetchMessages)
   // A page loaded before the history was deleted can show again for a moment when the
   // conversation is reopened, until it reloads: leave its older messages out. Memoized so
@@ -303,6 +324,32 @@ export function AppShell() {
     const knownConversations = new Set(listData.conversations.map((item) => item.id))
     const knownUsers = new Set(listData.users.map((user) => user.id))
     let reload = false
+    // A member was added, removed or left, the owner or the title changed: reload once
+    // per system message, to show the new members, owner and title.
+    for (const message of realtime.received) {
+      const key = `m:${message.id}`
+      if (message.system && !requestedRef.current.has(key)) {
+        requestedRef.current.add(key)
+        reload = true
+      }
+    }
+    // The user was removed from (or left) a group: the list reloads without it.
+    for (const conversationId of realtime.removed) {
+      const key = `r:${conversationId}`
+      if (!requestedRef.current.has(key)) {
+        requestedRef.current.add(key)
+        reload = true
+      }
+    }
+    // The user joined a conversation, maybe one the list knew before they were removed:
+    // reload once per join (`joined` only grows, so the index identifies it).
+    realtime.joined.forEach((member, index) => {
+      const key = `j:${index}`
+      if (member.userId === currentUserId && !requestedRef.current.has(key)) {
+        requestedRef.current.add(key)
+        reload = true
+      }
+    })
     const seen = [
       ...realtime.received.map((message) => ({
         conversationId: message.conversationId,
@@ -324,7 +371,21 @@ export function AppShell() {
       }
     }
     if (reload) reloadList()
-  }, [listData, realtime.received, realtime.joined, reloadList])
+  }, [listData, realtime.received, realtime.joined, realtime.removed, reloadList, currentUserId])
+
+  // Names for the senders and system lines of the last messages, when not members.
+  const requestUsers = extraUsers.request
+  useEffect(() => {
+    const ids = unknownUserIds(lastMessages, users)
+    if (ids.length > 0) requestUsers(ids)
+  }, [lastMessages, users, requestUsers])
+
+  // The user left the group in the dialog: it leaves the list at once.
+  function handleLeftGroup(conversationId: string) {
+    realtime.markRemoved(conversationId)
+    setSelectedId((current) => (current === conversationId ? null : current))
+    list.reload()
+  }
 
   // The new chat opens as soon as the reloaded list contains it.
   function handleCreated(conversationId: string) {
@@ -391,6 +452,8 @@ export function AppShell() {
             hidden={hidden}
             onHideMessages={handleHideMessages}
             onRecallMessages={handleRecallMessages}
+            onOpenGroupInfo={() => setGroupInfoFor(selected?.id ?? null)}
+            onUnknownUsers={extraUsers.request}
           />
         </main>
       </div>
@@ -408,6 +471,17 @@ export function AppShell() {
           onConfirm={() => handleClearConversation(deleteTarget)}
           onClose={() => setDeleteTarget(null)}
           onDone={() => setDeleteTarget(null)}
+        />
+      )}
+      {groupInfo && (
+        <GroupInfoDialog
+          key={groupInfo.id}
+          conversation={groupInfo}
+          users={users}
+          currentUserId={currentUserId}
+          onClose={() => setGroupInfoFor(null)}
+          onChanged={list.reload}
+          onLeft={() => handleLeftGroup(groupInfo.id)}
         />
       )}
       {profileOpen && ownProfile && (
