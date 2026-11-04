@@ -14,18 +14,16 @@ interface AttachmentViewProps {
   attachment: Attachment
   // Still being sent: the file may not be uploaded yet, so it cannot be downloaded.
   pending?: boolean
-  // An image finished loading, which changes the message's height.
-  onLoad?: () => void
 }
 
 // Images are shown inline; other files as a name, a size and a download button. Files
 // are never rendered as HTML: images use <img>, everything else downloads.
-export function AttachmentView({ kind, attachment, pending = false, onLoad }: AttachmentViewProps) {
-  if (kind === 'image') return <ImageAttachment attachment={attachment} onLoad={onLoad} />
+export function AttachmentView({ kind, attachment, pending = false }: AttachmentViewProps) {
+  if (kind === 'image') return <ImageAttachment attachment={attachment} />
   return <FileAttachment attachment={attachment} pending={pending} />
 }
 
-function ImageAttachment({ attachment, onLoad }: { attachment: Attachment; onLoad?: () => void }) {
+function ImageAttachment({ attachment }: { attachment: Attachment }) {
   const { t } = useTranslation()
   const url = useAttachmentUrl(attachment.path)
 
@@ -46,7 +44,6 @@ function ImageAttachment({ attachment, onLoad }: { attachment: Attachment; onLoa
       <img
         src={url.url}
         alt={attachment.name}
-        onLoad={onLoad}
         className="block max-h-72 max-w-full rounded-lg object-contain"
       />
     </a>
