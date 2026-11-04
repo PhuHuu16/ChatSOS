@@ -16,13 +16,6 @@
 
   /* Focus ring on the dark sidebar, the same in both themes. */
   --color-side-focus: #7cc0f0;
-
-  /* Old brand colours: still used by screens not yet moved to the tokens below. */
-  --color-brand-50: #e8f4fd;
-  --color-brand-100: #cfe8fb;
-  --color-brand-500: #2aabee;
-  --color-brand-600: #229ed9;
-  --color-brand-700: #1c87ba;
 }
 
 /* Colours by role. Each utility (bg-canvas, text-muted, border-line, …) reads a variable
