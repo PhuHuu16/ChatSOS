@@ -147,8 +147,11 @@ export function MessageList({
   const [older, setOlder] = useState<OlderMessages>({ messages: [], hasMore: null, error: null })
   const [loadingOlder, setLoadingOlder] = useState(false)
   const loadingOlderRef = useRef(false)
-  // The scroll position to keep when older messages are added above.
-  const anchorRef = useRef<{ height: number; top: number } | null>(null)
+  // The first message in view and how far its bottom edge is (px) below the top of the
+  // list. When the messages change size (an image loads, older ones are added above), the
+  // list scrolls so that this message stays where it was.
+  const anchorRef = useRef<{ id: string; bottom: number } | null>(null)
+  const messagesRef = useRef<HTMLOListElement>(null)
 
   // Own messages can be changed for a short time after sending; the actions disappear
   // once it has passed (the database refuses later changes anyway).
@@ -256,8 +259,6 @@ export function MessageList({
       setOlder((state) => ({ ...state, error: result.error }))
       return
     }
-    const list = listRef.current
-    if (list) anchorRef.current = { height: list.scrollHeight, top: list.scrollTop }
     setOlder((state) => ({
       messages: mergeMessages(result.data, state.messages, newestPage),
       hasMore: result.data.length >= MESSAGE_PAGE_SIZE,
@@ -279,19 +280,57 @@ export function MessageList({
     if (list) list.scrollTop = list.scrollHeight
   }
 
-  // An image that finishes loading grows its message; stay at the bottom if already there.
-  function keepBottom() {
-    if (stickRef.current) scrollToBottom()
+  // The first message whose bottom edge is below the top of the list, and how far below.
+  // The rows are in order from top to bottom, so a binary search finds it.
+  function findAnchor(list: HTMLElement): { id: string; bottom: number } | null {
+    const rows = list.querySelectorAll<HTMLElement>('[data-message-id]')
+    const top = list.getBoundingClientRect().top
+    let low = 0
+    let high = rows.length - 1
+    let found: HTMLElement | undefined
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2)
+      const row = rows[middle]
+      if (row && row.getBoundingClientRect().bottom > top) {
+        found = row
+        high = middle - 1
+      } else {
+        low = middle + 1
+      }
+    }
+    const id = found?.dataset.messageId
+    if (!found || !id) return null
+    return { id, bottom: found.getBoundingClientRect().bottom - top }
   }
 
-  // Older messages were added above: keep the messages on screen where they were.
-  useLayoutEffect(() => {
+  // The messages changed size: an image loaded, older messages were added above, a row
+  // changed. At the bottom the list stays there; otherwise it scrolls so that the message
+  // first in view is where it was. Without this, Safari (no scroll anchoring) and pages
+  // the browser does not anchor would move under the reader.
+  const keepInView = useEffectEvent(() => {
     const list = listRef.current
+    if (!list || !positionedRef.current) return
     const anchor = anchorRef.current
-    if (!list || !anchor) return
-    anchorRef.current = null
-    list.scrollTop = anchor.top + (list.scrollHeight - anchor.height)
-  }, [older.messages.length])
+    if (stickRef.current) {
+      scrollToBottom()
+    } else if (anchor) {
+      const row = list.querySelector(`[data-message-id="${anchor.id}"]`)
+      if (row) {
+        const shift =
+          row.getBoundingClientRect().bottom - list.getBoundingClientRect().top - anchor.bottom
+        if (Math.abs(shift) >= 1) list.scrollTop += shift
+      }
+    }
+    anchorRef.current = findAnchor(list)
+  })
+  useEffect(() => {
+    const messages = messagesRef.current
+    if (!messages) return
+    // Resize observers run after layout and before paint, so the move is never seen.
+    const observer = new ResizeObserver(() => keepInView())
+    observer.observe(messages)
+    return () => observer.disconnect()
+  }, [])
 
   // Positions the list once after it loads: at the first unread message when there is
   // one (loading a few older pages to reach it), otherwise at the bottom.
@@ -323,6 +362,7 @@ export function MessageList({
           list.scrollHeight - list.scrollTop - list.clientHeight <= STICK_DISTANCE
         // Close enough to the end: show it all, down to the read receipt.
         if (stickRef.current) scrollToBottom()
+        anchorRef.current = findAnchor(list)
         markReadIfSeen()
         return
       }
@@ -331,6 +371,7 @@ export function MessageList({
     setPositioned(true)
     stickRef.current = true
     scrollToBottom()
+    anchorRef.current = findAnchor(list)
     markReadIfSeen()
   })
   useLayoutEffect(() => {
@@ -400,7 +441,10 @@ export function MessageList({
           const list = event.currentTarget
           const isAtBottom =
             list.scrollHeight - list.scrollTop - list.clientHeight <= STICK_DISTANCE
-          if (positionedRef.current) stickRef.current = isAtBottom
+          if (positionedRef.current) {
+            stickRef.current = isAtBottom
+            anchorRef.current = findAnchor(list)
+          }
           if (isAtBottom !== atBottom) setAtBottom(isAtBottom)
           if (isAtBottom) markReadIfSeen()
           if (positionedRef.current && list.scrollTop < LOAD_OLDER_DISTANCE) void loadOlder()
@@ -411,25 +455,35 @@ export function MessageList({
         {latest.status === 'error' && (
           <LoadStatus status="error" error={latest.error} onRetry={latest.reload} />
         )}
-        {loaded && loadingOlder && <LoadStatus status="loading" />}
         {loaded && !loadingOlder && older.error && (
           <LoadStatus status="error" error={older.error} onRetry={() => void loadOlder()} />
         )}
-        {loaded && !loadingOlder && !older.error && hasMore && (
-          <div className="mb-2 text-center">
-            <button
-              type="button"
-              onClick={() => void loadOlder()}
-              className="rounded-full px-3 py-1 text-sm text-accent-fg hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              {t('chat.loadOlder')}
-            </button>
+        {loaded && (loadingOlder || (!older.error && hasMore)) && (
+          // As tall while loading as the button, so the messages below do not move when a
+          // page starts loading.
+          <div className="mb-2 flex h-7 items-center justify-center">
+            {loadingOlder ? (
+              <p role="status" className="text-sm text-muted">
+                {t('chat.loading')}
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void loadOlder()}
+                className="rounded-full px-3 py-1 text-sm text-accent-fg hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                {t('chat.loadOlder')}
+              </button>
+            )}
           </div>
         )}
         {loaded && shownCount === 0 && (
           <p className="py-6 text-center text-sm text-muted">{t('chat.noMessages')}</p>
         )}
-        <ol className={`text-[15px] leading-normal md:text-sm ${positioned ? '' : 'invisible'}`}>
+        <ol
+          ref={messagesRef}
+          className={`text-[15px] leading-normal md:text-sm ${positioned ? '' : 'invisible'}`}
+        >
           {shown.map((message, index) => {
             const previous = shown[index - 1]
             // A day separator above the first message of each day.
@@ -638,7 +692,6 @@ export function MessageList({
                             <AttachmentView
                               kind={message.kind}
                               attachment={message.attachment}
-                              onLoad={keepBottom}
                             />
                           </div>
                         )}
@@ -689,7 +742,6 @@ export function MessageList({
                             mime: message.upload.checked.mime,
                           }}
                           pending
-                          onLoad={keepBottom}
                         />
                       </div>
                     )}
