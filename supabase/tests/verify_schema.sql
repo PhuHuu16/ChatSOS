@@ -1,8 +1,8 @@
--- ChatSOS · read-only verification. Run after all 12 migrations (the 5 of Phase 1,
+-- ChatSOS · read-only verification. Run after all 13 migrations (the 5 of Phase 1,
 -- 20261028000100_edit_recall_messages.sql, 20261028000200_typing_and_read_receipts.sql,
 -- 20261029000100_avatars.sql, 20261030000100_delete_messages_and_conversations.sql,
--- 20261031000100_phone_and_admin_users.sql, 20261101000100_rate_limits.sql and
--- 20261102000100_group_management.sql).
+-- 20261031000100_phone_and_admin_users.sql, 20261101000100_rate_limits.sql,
+-- 20261102000100_group_management.sql and 20261104000100_foreign_key_indexes.sql).
 -- Rate-limit behaviour (counting, refusing) is tested by rate_limits_behaviour.sql, group
 -- management (RPCs, system messages, history since joining) by group_management_behaviour.sql.
 -- A single SELECT: it changes nothing (the functions it calls only read). Failing checks
@@ -351,6 +351,25 @@ checks (name, ok, detail) as (
       where i.indexrelid = to_regclass('public.messages_attachment_path_key') and i.indisunique
     ),
     null
+  union all
+  -- Foreign key indexes (migration 13): the index starts with the key column.
+  select
+    format('index %s on public.%s (%s)', x.index_name, x.table_name, x.column_name),
+    exists (
+      select 1
+      from pg_catalog.pg_index i
+      join pg_catalog.pg_attribute a
+        on a.attrelid = i.indrelid and a.attnum = i.indkey[0]
+      where i.indexrelid = to_regclass(format('public.%I', x.index_name))
+        and i.indrelid = to_regclass(format('public.%I', x.table_name))
+        and a.attname = x.column_name
+    ),
+    null
+  from (
+    values
+      ('messages_sender_id_idx', 'messages', 'sender_id'),
+      ('conversations_created_by_idx', 'conversations', 'created_by')
+  ) as x (index_name, table_name, column_name)
 
   union all
   -- Functions: exist, SECURITY DEFINER as expected, empty search_path, no PUBLIC/anon EXECUTE

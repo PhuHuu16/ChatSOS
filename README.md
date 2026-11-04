@@ -73,7 +73,7 @@ React 19, TypeScript, Vite, Tailwind CSS v4, i18next, supabase-js
 
 ### 1. Database Supabase
 
-Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 12 file trong
+Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 13 file trong
 `supabase/migrations/`, mỗi lần một file, theo đúng thứ tự tên file:
 
 1. `20261016000100_profiles.sql`: hồ sơ người dùng.
@@ -92,6 +92,8 @@ Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 12 file tron
     lần tìm theo số điện thoại.
 12. `20261102000100_group_management.sql`: đổi tên nhóm, thêm, xoá thành viên, chuyển quyền
     trưởng nhóm, rời nhóm, tin hệ thống; thành viên chỉ đọc tin từ lúc vào nhóm.
+13. `20261104000100_foreign_key_indexes.sql`: thêm index cho người gửi tin và người tạo
+    cuộc trò chuyện, để xoá tài khoản nhanh hơn.
 
 Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì. Sau đó chạy
 `supabase/tests/verify_schema.sql` (chỉ đọc); dòng `== ALL CHECKS PASSED ==` phải
@@ -120,6 +122,9 @@ chi tiết nằm ở đầu từng file.
 Gỡ migration 12 bằng `supabase/rollbacks/20261102000100_group_management_rollback.sql`.
 Script tự từ chối khi còn tin hệ thống ("A đã thêm B"), vì chúng không hợp với quy tắc tin
 nhắn cũ. Sau khi gỡ, thành viên lại đọc được cả tin gửi trước lúc họ vào nhóm.
+
+Gỡ migration 13 bằng `supabase/rollbacks/20261104000100_foreign_key_indexes_rollback.sql`
+(chỉ xoá hai index, không đổi dữ liệu).
 
 ### 2. Cấu hình Auth trong Dashboard
 
