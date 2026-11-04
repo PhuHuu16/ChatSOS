@@ -85,6 +85,8 @@ export const en: Translation = {
     search: 'Search chats',
     noSearchResults: 'No chats found',
     noMessages: 'No messages yet',
+    today: 'Today',
+    yesterday: 'Yesterday',
     newChat: 'New chat',
     newGroup: 'New group',
     groupInfo: 'Group info',

@@ -11,9 +11,9 @@ type LoadStatusProps = { tone?: Tone } & (
 
 const TONE_CLASSES = {
   default: {
-    text: 'text-slate-500',
-    error: 'text-red-700',
-    button: 'border-slate-300 bg-white hover:bg-slate-50 focus-visible:outline-brand-500',
+    text: 'text-muted',
+    error: 'text-danger',
+    button: 'border-line bg-surface text-fg hover:bg-hover focus-visible:outline-accent',
   },
   side: {
     text: 'text-side-muted',

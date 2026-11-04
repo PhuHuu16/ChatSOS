@@ -294,6 +294,46 @@ export function formatTime(iso: string, language: string): string {
   )
 }
 
+// A message from the same sender within this time (ms) of the one before joins its group:
+// it is shown without the avatar and name again.
+export const MESSAGE_GROUP_GAP_MS = 5 * 60 * 1000
+
+function localMidnight(time: number): number {
+  const date = new Date(time)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
+
+// How many calendar days (in local time) lie between the date and `now`: 0 = today,
+// 1 = yesterday. Rounded, so a daylight saving change does not matter.
+export function daysAgo(iso: string, now: number): number {
+  return Math.round((localMidnight(now) - localMidnight(Date.parse(iso))) / 86_400_000)
+}
+
+// E.g. "Thứ Hai, 2 tháng 11"; the year is added when it is not the current one.
+export function formatDay(iso: string, language: string, now: number): string {
+  const date = new Date(iso)
+  const sameYear = date.getFullYear() === new Date(now).getFullYear()
+  return new Intl.DateTimeFormat(language, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  }).format(date)
+}
+
+// Whether `message` starts a new group (shown with avatar and name) after `previous`, the
+// message shown just above it. System lines never join a group.
+export function startsGroup(
+  previous: Pick<Message, 'senderId' | 'kind' | 'createdAt'> | undefined,
+  message: Pick<Message, 'senderId' | 'kind' | 'createdAt'>,
+): boolean {
+  if (!previous || previous.kind === 'system' || message.kind === 'system') return true
+  if (previous.senderId !== message.senderId) return true
+  const gap = Date.parse(message.createdAt) - Date.parse(previous.createdAt)
+  if (gap > MESSAGE_GROUP_GAP_MS || gap < 0) return true
+  return daysAgo(previous.createdAt, Date.parse(message.createdAt)) !== 0
+}
+
 // Lower case without Vietnamese marks, so "nhom" finds "Nhóm" and "do" finds "Đỗ".
 function foldForSearch(text: string): string {
   return text

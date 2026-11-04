@@ -86,6 +86,8 @@ export const vi = {
     search: 'Tìm cuộc trò chuyện',
     noSearchResults: 'Không tìm thấy cuộc trò chuyện',
     noMessages: 'Chưa có tin nhắn nào',
+    today: 'Hôm nay',
+    yesterday: 'Hôm qua',
     newChat: 'Chat mới',
     newGroup: 'Nhóm mới',
     groupInfo: 'Thông tin nhóm',
