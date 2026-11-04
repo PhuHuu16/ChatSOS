@@ -4,6 +4,7 @@ import { Link } from '../../routing/Link'
 import { PATHS } from '../../routing/navigation'
 import { AuthLayout } from './AuthLayout'
 import type { AuthErrorKey } from './authContext'
+import { authLink, errorAlert, primaryButton } from './authStyles'
 import { PasswordInput } from './PasswordInput'
 import { TextField } from './TextField'
 import { useAuth } from './useAuth'
@@ -74,10 +75,7 @@ export function LoginPage() {
       footer={
         <>
           {t('auth.login.noAccount')}{' '}
-          <Link
-            to={PATHS.register}
-            className="font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
-          >
+          <Link to={PATHS.register} className={authLink}>
             {t('auth.login.toRegister')}
           </Link>
         </>
@@ -106,27 +104,20 @@ export function LoginPage() {
           onChange={(event) => handlePasswordChange(event.target.value)}
           error={passwordError && t(passwordError)}
           disabled={pending}
+          labelAside={
+            <Link to={PATHS.forgotPassword} className={`text-sm ${authLink}`}>
+              {t('auth.login.forgotPassword')}
+            </Link>
+          }
         />
-        <div className="-mt-2 text-right">
-          <Link
-            to={PATHS.forgotPassword}
-            className="text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500"
-          >
-            {t('auth.login.forgotPassword')}
-          </Link>
-        </div>
 
         {serverError && (
-          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p role="alert" className={errorAlert}>
             {t(serverError)}
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="w-full rounded-full bg-brand-500 px-5 py-2.5 text-base font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <button type="submit" disabled={pending} className={primaryButton}>
           {pending ? t('auth.login.submitting') : t('auth.login.submit')}
         </button>
       </form>

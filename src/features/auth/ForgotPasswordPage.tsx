@@ -4,6 +4,15 @@ import { Link } from '../../routing/Link'
 import { PATHS, navigate } from '../../routing/navigation'
 import { AuthLayout } from './AuthLayout'
 import type { AuthErrorKey } from './authContext'
+import {
+  authLink,
+  errorAlert,
+  infoAlert,
+  introText,
+  primaryButton,
+  secondaryButton,
+  textButton,
+} from './authStyles'
 import { PasswordInput } from './PasswordInput'
 import { TextField } from './TextField'
 import { useAuth } from './useAuth'
@@ -23,20 +32,11 @@ import {
 // Supabase lets an address request a new email about once a minute.
 const RESEND_COOLDOWN_SECONDS = 60
 
-const primaryButton =
-  'w-full rounded-full bg-brand-500 px-5 py-2.5 text-base font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60'
-const secondaryButton =
-  'w-full rounded-full border border-slate-300 px-5 py-2.5 text-base font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60'
-const textButton =
-  'text-sm font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline'
-const linkClassName =
-  'font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500'
-
 function ServerError({ error }: { error: AuthErrorKey | null }) {
   const { t } = useTranslation()
   if (!error) return null
   return (
-    <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+    <p role="alert" className={errorAlert}>
       {t(error)}
     </p>
   )
@@ -146,7 +146,7 @@ function RequestSteps() {
   }
 
   const footer = (
-    <Link to={PATHS.login} className={linkClassName}>
+    <Link to={PATHS.login} className={authLink}>
       {t('auth.forgot.backToLogin')}
     </Link>
   )
@@ -155,7 +155,7 @@ function RequestSteps() {
     return (
       <AuthLayout title={t('auth.forgot.title')} footer={footer}>
         <form noValidate onSubmit={(event) => void handleSend(event)} className="space-y-4">
-          <p className="text-sm text-slate-600">{t('auth.forgot.intro')}</p>
+          <p className={introText}>{t('auth.forgot.intro')}</p>
           <TextField
             label={t('auth.fields.email')}
             type="email"
@@ -184,7 +184,7 @@ function RequestSteps() {
   return (
     <AuthLayout title={t('auth.forgot.codeTitle')} footer={footer}>
       <form noValidate onSubmit={(event) => void handleVerify(event)} className="space-y-4">
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className={introText}>
           {t('auth.forgot.codeSent', { email: sentTo })}
         </p>
         <TextField
@@ -207,7 +207,7 @@ function RequestSteps() {
         />
         <ServerError error={serverError} />
         {resent && !serverError && (
-          <p role="status" className="rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-700">
+          <p role="status" className={infoAlert}>
             {t('auth.forgot.resent')}
           </p>
         )}
@@ -288,7 +288,7 @@ function NewPasswordStep() {
   return (
     <AuthLayout title={t('auth.forgot.newPasswordTitle')}>
       <form noValidate onSubmit={(event) => void handleSave(event)} className="space-y-4">
-        <p className="text-sm text-slate-600">{t('auth.forgot.newPasswordIntro')}</p>
+        <p className={introText}>{t('auth.forgot.newPasswordIntro')}</p>
         {/* Lets password managers save the new password under the right account. */}
         <input
           type="text"

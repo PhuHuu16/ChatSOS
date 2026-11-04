@@ -2,7 +2,15 @@ import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, isLanguage } from '../i18n'
 
-export function LanguageSwitcher() {
+const DEFAULT_CLASS_NAME =
+  'rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500'
+
+interface LanguageSwitcherProps {
+  // Replaces the default look of the select (sidebar, sign-in pages).
+  className?: string
+}
+
+export function LanguageSwitcher({ className = DEFAULT_CLASS_NAME }: LanguageSwitcherProps) {
   const { t, i18n } = useTranslation()
   const id = useId()
 
@@ -18,7 +26,7 @@ export function LanguageSwitcher() {
           const value = event.target.value
           if (isLanguage(value)) void i18n.changeLanguage(value)
         }}
-        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        className={className}
       >
         {SUPPORTED_LANGUAGES.map((language) => (
           <option key={language} value={language}>

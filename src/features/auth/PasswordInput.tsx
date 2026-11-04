@@ -25,7 +25,7 @@ export function PasswordInput(props: PasswordInputProps) {
           aria-pressed={visible}
           disabled={props.disabled}
           onClick={() => setVisible((current) => !current)}
-          className="rounded-md p-2 text-slate-500 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-50"
+          className="rounded-md p-2 text-zinc-300 hover:text-white focus-visible:outline-2 focus-visible:outline-auth-focus disabled:opacity-50"
         >
           <svg
             aria-hidden="true"

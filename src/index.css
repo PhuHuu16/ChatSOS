@@ -8,6 +8,12 @@
     "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
 
+  /* Sign-in pages: always light text on the dark background picture, in both themes. */
+  --color-auth-card: rgb(17 12 40 / 0.62);
+  --color-auth-control: rgb(17 12 40 / 0.5);
+  --color-auth-link: #a5d8ff;
+  --color-auth-focus: #7cc0f0;
+
   /* Old brand colours: still used by screens not yet moved to the tokens below. */
   --color-brand-50: #e8f4fd;
   --color-brand-100: #cfe8fb;
@@ -113,5 +119,17 @@
 
   body {
     @apply bg-white text-slate-900 antialiased;
+  }
+}
+
+@layer components {
+  /* Browser autofill paints inputs light blue; keep sign-in fields dark with white text. */
+  .auth-input:-webkit-autofill,
+  .auth-input:-webkit-autofill:hover,
+  .auth-input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #ffffff;
+    caret-color: #ffffff;
+    box-shadow: 0 0 0 1000px rgb(38 30 70) inset;
+    transition: background-color 9999s ease-out 0s;
   }
 }

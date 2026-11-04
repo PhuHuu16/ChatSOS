@@ -4,6 +4,7 @@ import { Link } from '../../routing/Link'
 import { PATHS } from '../../routing/navigation'
 import { AuthLayout } from './AuthLayout'
 import type { AuthErrorKey } from './authContext'
+import { authLink, errorAlert, introText, primaryButton } from './authStyles'
 import { PasswordInput } from './PasswordInput'
 import { TextField } from './TextField'
 import { useAuth } from './useAuth'
@@ -53,9 +54,6 @@ function validate(values: RegisterValues): RegisterErrors {
 function hasErrors(errors: RegisterErrors): boolean {
   return Object.values(errors).some((error) => error !== null)
 }
-
-const linkClassName =
-  'font-medium text-brand-700 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500'
 
 export function RegisterPage() {
   const { t } = useTranslation()
@@ -120,12 +118,12 @@ export function RegisterPage() {
       <AuthLayout
         title={t('auth.register.checkInboxTitle')}
         footer={
-          <Link to={PATHS.login} className={linkClassName}>
+          <Link to={PATHS.login} className={authLink}>
             {t('auth.register.toLogin')}
           </Link>
         }
       >
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className={introText}>
           {t('auth.register.checkInboxBody', { email: confirmationEmail })}
         </p>
       </AuthLayout>
@@ -135,37 +133,41 @@ export function RegisterPage() {
   return (
     <AuthLayout
       title={t('auth.register.title')}
+      wide
       footer={
         <>
           {t('auth.register.hasAccount')}{' '}
-          <Link to={PATHS.login} className={linkClassName}>
+          <Link to={PATHS.login} className={authLink}>
             {t('auth.register.toLogin')}
           </Link>
         </>
       }
     >
       <form noValidate onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
-        <TextField
-          label={t('auth.fields.username')}
-          name="username"
-          autoComplete="username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          value={values.username}
-          onChange={(event) => setField('username', normalizeUsernameInput(event.target.value))}
-          error={fieldError('username')}
-          disabled={pending}
-        />
-        <TextField
-          label={t('auth.fields.displayName')}
-          name="displayName"
-          autoComplete="nickname"
-          value={values.displayName}
-          onChange={(event) => setField('displayName', event.target.value)}
-          error={fieldError('displayName')}
-          disabled={pending}
-        />
+        {/* Pairs sit side by side from the sm breakpoint, stacked on phones. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            label={t('auth.fields.username')}
+            name="username"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={values.username}
+            onChange={(event) => setField('username', normalizeUsernameInput(event.target.value))}
+            error={fieldError('username')}
+            disabled={pending}
+          />
+          <TextField
+            label={t('auth.fields.displayName')}
+            name="displayName"
+            autoComplete="nickname"
+            value={values.displayName}
+            onChange={(event) => setField('displayName', event.target.value)}
+            error={fieldError('displayName')}
+            disabled={pending}
+          />
+        </div>
         <TextField
           label={t('auth.fields.email')}
           type="email"
@@ -191,36 +193,34 @@ export function RegisterPage() {
           error={fieldError('phone')}
           disabled={pending}
         />
-        <PasswordInput
-          label={t('auth.fields.password')}
-          name="password"
-          autoComplete="new-password"
-          value={values.password}
-          onChange={(event) => setField('password', event.target.value)}
-          error={fieldError('password')}
-          disabled={pending}
-        />
-        <PasswordInput
-          label={t('auth.fields.passwordConfirm')}
-          name="passwordConfirm"
-          autoComplete="new-password"
-          value={values.passwordConfirm}
-          onChange={(event) => setField('passwordConfirm', event.target.value)}
-          error={fieldError('passwordConfirm')}
-          disabled={pending}
-        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <PasswordInput
+            label={t('auth.fields.password')}
+            name="password"
+            autoComplete="new-password"
+            value={values.password}
+            onChange={(event) => setField('password', event.target.value)}
+            error={fieldError('password')}
+            disabled={pending}
+          />
+          <PasswordInput
+            label={t('auth.fields.passwordConfirm')}
+            name="passwordConfirm"
+            autoComplete="new-password"
+            value={values.passwordConfirm}
+            onChange={(event) => setField('passwordConfirm', event.target.value)}
+            error={fieldError('passwordConfirm')}
+            disabled={pending}
+          />
+        </div>
 
         {serverError && (
-          <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p role="alert" className={errorAlert}>
             {t(serverError)}
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="w-full rounded-full bg-brand-500 px-5 py-2.5 text-base font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <button type="submit" disabled={pending} className={primaryButton}>
           {pending ? t('auth.register.submitting') : t('auth.register.submit')}
         </button>
       </form>

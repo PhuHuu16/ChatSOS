@@ -7,13 +7,13 @@ import {
 } from '../lib/theme'
 
 interface ThemeSwitcherProps {
-  // Colours and hover for where the button sits (sidebar, sign-in pages).
+  // Colours, hover and focus-ring colour for where the button sits (sidebar, sign-in pages).
   className?: string
 }
 
 // One icon button; each click moves light → dark → system. The icon and the accessible
 // name show the current choice.
-export function ThemeSwitcher({ className = '' }: ThemeSwitcherProps) {
+export function ThemeSwitcher({ className = 'focus-visible:outline-accent' }: ThemeSwitcherProps) {
   const { t } = useTranslation()
   const preference = useThemePreference()
   const label = t('theme.button', { value: t(`theme.${preference}`) })
@@ -24,7 +24,7 @@ export function ThemeSwitcher({ className = '' }: ThemeSwitcherProps) {
       onClick={() => setThemePreference(nextThemePreference(preference))}
       aria-label={label}
       title={label}
-      className={`inline-flex size-9 shrink-0 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${className}`}
+      className={`inline-flex size-9 shrink-0 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 ${className}`}
     >
       <ThemeIcon preference={preference} />
     </button>
