@@ -1,5 +1,5 @@
-// ChatSOS · phone-sign-in request handling, without Deno or supabase-js, so it can be
-// unit tested in Node (handler.test.mjs). index.ts wires it to the real services.
+// ChatSOS · phone-sign-in request handling, kept apart from Deno and supabase-js;
+// index.ts wires it to the real services.
 //
 // Order of a request:
 //   1. read and check the body;

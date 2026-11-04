@@ -95,12 +95,7 @@ Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 13 file tron
 13. `20261104000100_foreign_key_indexes.sql`: thêm index cho người gửi tin và người tạo
     cuộc trò chuyện, để xoá tài khoản nhanh hơn.
 
-Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì. Sau đó chạy
-`supabase/tests/verify_schema.sql` (chỉ đọc); dòng `== ALL CHECKS PASSED ==` phải
-là `true`. Có thể chạy thêm `supabase/tests/rate_limits_behaviour.sql` để thử các giới
-hạn: script luôn kết thúc bằng một lỗi có chữ `ALL n CHECKS PASSED` hoặc `FAILED`, và
-mọi thứ nó ghi đều được rollback. `supabase/tests/group_management_behaviour.sql` thử phần
-quản lý nhóm theo cùng cách. Script này cần 4 tài khoản thử `gd7_test1` … `gd7_test4`.
+Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì.
 
 Kiểm tra thêm trong Dashboard: **Settings → Data API → Exposed schemas** không được
 có `private`.
@@ -153,12 +148,6 @@ Secret tuỳ chọn `PHONE_SIGN_IN_IP_HEADER`: tên header chứa IP người g�
 đó; để trống thì chỉ giới hạn theo số điện thoại. Chưa deploy function thì đăng nhập
 bằng số điện thoại báo "Tạm thời chưa đăng nhập được bằng số điện thoại", còn đăng nhập
 bằng email vẫn chạy bình thường.
-
-Kiểm thử logic của function (không cần Supabase, Node 22.18 trở lên):
-
-```bash
-node --test supabase/functions/phone-sign-in/handler.test.mjs
-```
 
 ### 4. Biến môi trường
 
@@ -223,9 +212,8 @@ src/
   routing/               định tuyến tối giản
 supabase/
   migrations/            schema, RLS, hàm, trigger, storage
-  functions/             Edge Function phone-sign-in và test của nó
+  functions/             Edge Function phone-sign-in
   rollbacks/             script gỡ migration (chạy tay, có điều kiện an toàn)
-  tests/                 kiểm tra schema (chỉ đọc) và thử giới hạn (tự rollback)
 ```
 
 ## Hạn chế đã biết
