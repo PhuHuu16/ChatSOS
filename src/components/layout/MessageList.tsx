@@ -152,6 +152,10 @@ export function MessageList({
   // list scrolls so that this message stays where it was.
   const anchorRef = useRef<{ id: string; bottom: number } | null>(null)
   const messagesRef = useRef<HTMLOListElement>(null)
+  // The "new messages" button scrolls smoothly to the bottom. Keeping a message in place
+  // while that runs stops it, so it is started again, until the bottom is reached or the
+  // user scrolls themselves.
+  const seekingBottomRef = useRef(false)
 
   // Own messages can be changed for a short time after sending; the actions disappear
   // once it has passed (the database refuses later changes anyway).
@@ -320,6 +324,7 @@ export function MessageList({
           row.getBoundingClientRect().bottom - list.getBoundingClientRect().top - anchor.bottom
         if (Math.abs(shift) >= 1) list.scrollTop += shift
       }
+      if (seekingBottomRef.current) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
     }
     anchorRef.current = findAnchor(list)
   })
@@ -445,10 +450,20 @@ export function MessageList({
             stickRef.current = isAtBottom
             anchorRef.current = findAnchor(list)
           }
+          if (isAtBottom) seekingBottomRef.current = false
           if (isAtBottom !== atBottom) setAtBottom(isAtBottom)
           if (isAtBottom) markReadIfSeen()
-          if (positionedRef.current && list.scrollTop < LOAD_OLDER_DISTANCE) void loadOlder()
+          if (
+            positionedRef.current &&
+            !seekingBottomRef.current &&
+            list.scrollTop < LOAD_OLDER_DISTANCE
+          ) {
+            void loadOlder()
+          }
         }}
+        onWheel={() => (seekingBottomRef.current = false)}
+        onTouchStart={() => (seekingBottomRef.current = false)}
+        onKeyDown={() => (seekingBottomRef.current = false)}
         className="h-full overflow-y-auto pt-3 pb-10"
       >
         {latest.status === 'loading' && <LoadStatus status="loading" />}
@@ -795,7 +810,9 @@ export function MessageList({
           type="button"
           onClick={() => {
             const list = listRef.current
-            list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
+            if (!list) return
+            seekingBottomRef.current = true
+            list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
           }}
           className="absolute right-4 bottom-4 rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-white shadow-md hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
