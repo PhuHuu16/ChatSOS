@@ -398,7 +398,7 @@ export function AppShell() {
   return (
     <div className="flex h-full flex-col">
       {realtime.status === 'interrupted' && (
-        <p role="status" className="bg-amber-100 px-4 py-1 text-center text-sm text-amber-900">
+        <p role="status" className="border-b border-line bg-warning-soft px-4 py-1 text-center text-sm text-warning">
           {t('chat.reconnecting')}
         </p>
       )}

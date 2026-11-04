@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, isLanguage } from '../i18n'
 
 const DEFAULT_CLASS_NAME =
-  'rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500'
+  'h-9 rounded-lg border border-line-strong bg-surface px-2 text-sm text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
 interface LanguageSwitcherProps {
   // Replaces the default look of the select (sidebar, sign-in pages).

@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
+import { BrandLogo } from './BrandLogo'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { ThemeSwitcher } from './ThemeSwitcher'
 
 interface ConfigErrorScreenProps {
   // 'config': the Supabase settings are missing or invalid.
@@ -25,21 +27,27 @@ export function ConfigErrorScreen({ reason }: ConfigErrorScreenProps) {
   }[reason]
 
   return (
-    <div className="flex min-h-full flex-col bg-slate-50">
+    <div className="flex min-h-full flex-col bg-subtle text-fg">
       <header className="flex items-center justify-between gap-2 px-4 py-3">
-        <span className="text-lg font-semibold text-brand-700">{t('app.name')}</span>
-        <LanguageSwitcher />
+        <BrandLogo />
+        <div className="flex items-center gap-1">
+          <ThemeSwitcher className="text-muted hover:bg-hover hover:text-fg focus-visible:outline-accent" />
+          <LanguageSwitcher />
+        </div>
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 pb-16">
-        <div role="alert" className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-sm">
+        <div
+          role="alert"
+          className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 text-center shadow-sm"
+        >
           <h1 className="text-lg font-semibold">{title}</h1>
-          <p className="mt-2 text-sm text-slate-600">{description}</p>
+          <p className="mt-2 text-sm text-muted">{description}</p>
           {canReload && (
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-5 rounded-full bg-brand-500 px-5 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+              className="mt-5 inline-flex h-9 items-center rounded-lg bg-accent px-5 text-sm font-semibold text-white hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               {t('config.reload')}
             </button>
