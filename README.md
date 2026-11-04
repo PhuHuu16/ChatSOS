@@ -50,6 +50,11 @@ realtime dùng [Supabase](https://supabase.com). Giao diện tiếng Việt và 
 - Đếm tin chưa đọc; mở chat thì nhảy tới tin chưa đọc đầu tiên.
 - Xem 50 tin mới nhất, cuộn lên đầu để tải thêm tin cũ.
 - Lỗi bất ngờ hiện màn hình báo lỗi có nút tải lại, thay vì trang trắng.
+- Giao diện sáng, tối hoặc theo hệ thống: bấm nút giao diện (ở thanh bên và góc trang
+  đăng nhập) để đổi lần lượt; lựa chọn được nhớ trên trình duyệt đó.
+- Ô "Tìm cuộc trò chuyện" ở thanh bên lọc danh sách chat theo tên.
+- Tin nhắn hiện theo dòng (ảnh đại diện, tên, giờ). Các nút Sửa / Chọn / Xoá với mọi
+  người hiện khi rê chuột lên tin; trên màn hình cảm ứng thì bấm nút ⋯ của tin.
 
 ## Công nghệ
 
