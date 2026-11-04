@@ -7,6 +7,7 @@ import {
 } from '../features/chat/attachments'
 import type { Attachment } from '../features/chat/types'
 import { DEFAULT_LANGUAGE } from '../i18n'
+import { ICON_PROPS } from './iconProps'
 
 interface AttachmentViewProps {
   kind: 'image' | 'file'
@@ -29,10 +30,10 @@ function ImageAttachment({ attachment, onLoad }: { attachment: Attachment; onLoa
   const url = useAttachmentUrl(attachment.path)
 
   if (url.status === 'loading') {
-    return <div role="status" aria-label={t('chat.loading')} className="h-40 w-56 max-w-full animate-pulse rounded-lg bg-slate-200" />
+    return <div role="status" aria-label={t('chat.loading')} className="h-40 w-56 max-w-full animate-pulse rounded-lg bg-subtle" />
   }
   if (url.status === 'error') {
-    return <p className="text-sm text-slate-500 italic">{t('chat.attachmentUnavailable')}</p>
+    return <p className="text-sm text-muted italic">{t('chat.attachmentUnavailable')}</p>
   }
   return (
     <a
@@ -40,7 +41,7 @@ function ImageAttachment({ attachment, onLoad }: { attachment: Attachment; onLoa
       target="_blank"
       rel="noopener noreferrer"
       aria-label={t('chat.openImage', { name: attachment.name })}
-      className="block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+      className="block w-fit max-w-full rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
     >
       <img
         src={url.url}
@@ -64,19 +65,25 @@ function FileAttachment({ attachment, pending }: { attachment: Attachment; pendi
   }
 
   return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/70 text-lg">
-        📄
+    <div className="flex w-80 max-w-full min-w-0 items-center gap-3 rounded-lg border border-line bg-subtle px-3 py-2.5 text-fg">
+      <span
+        aria-hidden="true"
+        className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent-fg"
+      >
+        <svg {...ICON_PROPS} width={16} height={16} strokeWidth={2}>
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+          <path d="M14 3v5h5" />
+        </svg>
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium" title={attachment.name}>
           {attachment.name}
         </span>
-        <span className="block text-xs text-slate-500">
+        <span className="block text-xs text-muted">
           {formatFileSize(attachment.size, language)}
         </span>
         {state === 'failed' && (
-          <span role="alert" className="block text-xs text-red-700">
+          <span role="alert" className="block text-xs text-danger">
             {t('chat.errors.downloadFailed')}
           </span>
         )}
@@ -87,7 +94,7 @@ function FileAttachment({ attachment, pending }: { attachment: Attachment; pendi
           onClick={() => void handleDownload()}
           disabled={state === 'busy'}
           aria-label={t('chat.downloadFile', { name: attachment.name })}
-          className="shrink-0 rounded-full border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-50"
+          className="shrink-0 rounded-md border border-line bg-surface px-3 py-1 text-sm hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
         >
           {t('chat.download')}
         </button>

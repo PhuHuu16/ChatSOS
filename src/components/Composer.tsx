@@ -16,9 +16,13 @@ import {
   type CheckedFile,
   type FileCheckErrorKey,
 } from '../features/chat/attachments'
+import { ICON_PROPS } from './iconProps'
 
 // The text box grows with its content up to this height (px), then scrolls.
 const MAX_TEXTAREA_HEIGHT = 160
+
+const FOCUS_RING = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
+const ICON_BUTTON = `inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-fg ${FOCUS_RING}`
 
 // An existing message being edited in the box instead of a new one being written.
 export interface ComposerEditing {
@@ -146,6 +150,12 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
   }
 
   const error = tooLong ? 'chat.errors.messageTooLong' : fileError
+  // The box's border: red for a problem, accent while a file is dragged over the page.
+  const boxColours = tooLong
+    ? 'border-danger'
+    : dragging && !editing
+      ? 'border-accent bg-accent-soft'
+      : 'border-line focus-within:border-accent focus-within:ring-1 focus-within:ring-accent'
 
   return (
     <form
@@ -153,21 +163,21 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
         event.preventDefault()
         submit()
       }}
-      className={`border-t px-4 py-3 ${dragging && !editing ? 'border-brand-500 bg-brand-50' : 'border-slate-200'}`}
+      className="px-3 pt-1 pb-3 md:px-5 md:pb-4"
     >
       {editing && (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-brand-50 px-3 py-1.5 text-sm text-brand-700">
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-accent-soft px-3 py-1.5 text-sm text-accent-fg">
           <span className="font-medium">{t('chat.editing')}</span>
           <button
             type="button"
             onClick={editing.onCancel}
-            className="rounded px-1 font-medium underline hover:text-brand-600 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500"
+            className="rounded px-1 font-medium underline hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
             {t('chat.cancelEdit')}
           </button>
         </div>
       )}
-      <div className="flex items-end gap-2">
+      <div className={`flex items-end gap-1 rounded-xl border bg-surface p-1.5 ${boxColours}`}>
         <input
           ref={fileInputRef}
           type="file"
@@ -188,9 +198,9 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
           aria-label={t('chat.attach')}
           title={t('chat.attach')}
           hidden={editing !== null}
-          className="shrink-0 rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+          className={ICON_BUTTON}
         >
-          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg {...ICON_PROPS}>
             <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
           </svg>
         </button>
@@ -215,18 +225,35 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
           aria-label={t('chat.composerPlaceholder')}
           aria-invalid={tooLong}
           aria-describedby={error ? errorId : undefined}
-          className="min-w-0 flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm leading-5 focus-visible:border-brand-500 focus-visible:outline-2 focus-visible:outline-brand-500 aria-invalid:border-red-500"
+          // The box around it shows the focus; 16px text on phones keeps iOS Safari from
+          // zooming in on focus.
+          className="min-w-0 flex-1 resize-none bg-transparent px-1.5 py-2 text-base leading-5 text-fg outline-none placeholder:text-muted md:text-sm"
         />
-        <button
-          type="submit"
-          disabled={!canSend}
-          className="shrink-0 rounded-full bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {editing ? t(editing.saving ? 'chat.saving' : 'chat.save') : t('chat.send')}
-        </button>
+        {editing ? (
+          <button
+            type="submit"
+            disabled={!canSend}
+            className={`h-9 shrink-0 rounded-lg bg-accent px-3 text-sm font-semibold text-white hover:bg-accent-hover ${FOCUS_RING} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            {t(editing.saving ? 'chat.saving' : 'chat.save')}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!canSend}
+            aria-label={t('chat.send')}
+            title={t('chat.send')}
+            className={`inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white hover:bg-accent-hover ${FOCUS_RING} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            <svg {...ICON_PROPS} strokeWidth={2}>
+              <path d="M22 2 11 13" />
+              <path d="M22 2 15 22l-4-9-9-4Z" />
+            </svg>
+          </button>
+        )}
       </div>
       {error && (
-        <p id={errorId} role="alert" className="mt-1 text-xs text-red-700">
+        <p id={errorId} role="alert" className="mt-1 text-xs text-danger">
           {t(error, { max: MESSAGE_MAX_LENGTH, maxMb: ATTACHMENT_MAX_MB })}
         </p>
       )}

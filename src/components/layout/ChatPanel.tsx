@@ -16,7 +16,11 @@ import { useTyping } from '../../features/chat/useTyping'
 import { Avatar } from '../Avatar'
 import { Composer } from '../Composer'
 import { DeleteMessagesDialog } from '../DeleteMessagesDialog'
+import { ICON_PROPS } from '../iconProps'
 import { MessageList } from './MessageList'
+
+const ICON_BUTTON =
+  'inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
 interface ChatPanelProps {
   conversation: Conversation | null
@@ -181,8 +185,8 @@ export function ChatPanel({
 
   if (!conversation) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-50 p-6">
-        <p className="rounded-full bg-white px-4 py-2 text-sm text-slate-500 shadow-sm">
+      <div className="flex h-full w-full items-center justify-center bg-canvas p-6">
+        <p className="rounded-full bg-subtle px-4 py-2 text-sm text-muted">
           {t('chat.emptyState')}
         </p>
       </div>
@@ -192,24 +196,29 @@ export function ChatPanel({
   const title = getConversationTitle(conversation, users, currentUserId)
 
   return (
-    <div className="flex h-full w-full flex-col bg-white">
-      <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+    <div className="flex h-full w-full flex-col bg-canvas text-fg">
+      <header className="flex h-15 shrink-0 items-center gap-3 border-b border-line pr-3 pl-4 md:pl-5">
         <button
           type="button"
           onClick={onBack}
           aria-label={t('chat.back')}
-          className="-ml-1 rounded-full px-2 py-1 text-xl leading-none text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 md:hidden"
+          title={t('chat.back')}
+          className={`-ml-2 md:hidden ${ICON_BUTTON}`}
         >
-          <span aria-hidden="true">←</span>
+          <svg {...ICON_PROPS} width={20} height={20} strokeWidth={2}>
+            <path d="m15 18-6-6 6-6" />
+          </svg>
         </button>
         <Avatar
           id={conversation.id}
           name={title}
           avatarPath={getConversationAvatarPath(conversation, users, currentUserId)}
+          size="sm"
+          shape={conversation.type === 'group' ? 'square' : 'circle'}
         />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-semibold">{title}</h2>
-          <p className="text-sm text-slate-500">
+          <h2 className="truncate text-[15px] font-semibold">{title}</h2>
+          <p className="truncate text-xs text-muted">
             {conversation.type === 'group'
               ? t('chat.members', { count: conversation.memberIds.length })
               : t('chat.direct')}
@@ -221,9 +230,13 @@ export function ChatPanel({
             onClick={onOpenGroupInfo}
             aria-label={t('chat.groupInfo')}
             title={t('chat.groupInfo')}
-            className="shrink-0 rounded-full px-2 py-1 text-lg leading-none text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            className={ICON_BUTTON}
           >
-            <span aria-hidden="true">ⓘ</span>
+            <svg {...ICON_PROPS}>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 11v5" />
+              <path d="M12 7.5v.5" />
+            </svg>
           </button>
         )}
       </header>
@@ -257,14 +270,14 @@ export function ChatPanel({
       {errorHere && (
         <div
           role="alert"
-          className="flex items-center justify-between gap-2 border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+          className="flex items-center justify-between gap-2 border-t border-line bg-danger-soft px-4 py-2 text-sm text-danger"
         >
           <p>{t(errorHere)}</p>
           <button
             type="button"
             onClick={() => setActionError(null)}
             aria-label={t('chat.dismiss')}
-            className="rounded px-1 text-lg leading-none hover:text-red-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500"
+            className="rounded px-1 text-lg leading-none hover:opacity-75 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
             <span aria-hidden="true">×</span>
           </button>
@@ -272,11 +285,11 @@ export function ChatPanel({
       )}
 
       {selected && (
-        <div className="flex items-center gap-2 border-t border-slate-200 px-4 py-3">
+        <div className="flex items-center gap-2 border-t border-line px-4 py-3">
           <p role="status" className="min-w-0 flex-1 text-sm">
             {t('chat.selection.count', { count: selected.size })}
             {selected.size >= MESSAGE_SELECT_LIMIT && (
-              <span className="block text-xs text-slate-500">
+              <span className="block text-xs text-muted">
                 {t('chat.selection.limit', { max: MESSAGE_SELECT_LIMIT })}
               </span>
             )}
@@ -285,14 +298,14 @@ export function ChatPanel({
             type="button"
             onClick={() => setDeleteOpen(true)}
             disabled={selected.size === 0}
-            className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg bg-danger-solid px-4 py-2 text-sm font-semibold text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60"
           >
             {t('chat.selection.delete')}
           </button>
           <button
             type="button"
             onClick={endSelection}
-            className="rounded-md px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-fg hover:bg-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {t('chat.selection.cancel')}
           </button>

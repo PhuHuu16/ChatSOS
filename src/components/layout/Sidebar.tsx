@@ -16,6 +16,7 @@ import type { OwnProfile } from '../../features/profile/profileApi'
 import { DEFAULT_LANGUAGE } from '../../i18n'
 import { Avatar } from '../Avatar'
 import { BrandLogo } from '../BrandLogo'
+import { ICON_PROPS } from '../iconProps'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 import { LoadStatus } from '../LoadStatus'
 import { ThemeSwitcher } from '../ThemeSwitcher'
@@ -50,18 +51,6 @@ interface SidebarProps {
 const SIDE_FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-side-focus'
 const SIDE_ICON_COLOURS = 'text-side-muted hover:bg-side-hover hover:text-side-fg'
 const ICON_BUTTON = `inline-flex size-9 shrink-0 items-center justify-center rounded-lg ${SIDE_ICON_COLOURS} ${SIDE_FOCUS} disabled:cursor-not-allowed disabled:opacity-60`
-
-const ICON_PROPS = {
-  'aria-hidden': true,
-  width: 18,
-  height: 18,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 1.8,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-} as const
 
 export function Sidebar({
   list,
