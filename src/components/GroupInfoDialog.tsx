@@ -19,6 +19,8 @@ import type { Conversation, Profile, User } from '../features/chat/types'
 import { useChatQuery } from '../features/chat/useChatQuery'
 import { useDebouncedValue } from '../features/chat/useDebouncedValue'
 import { Avatar } from './Avatar'
+import { CHIP, CLOSE_BUTTON, DANGER_OUTLINE_BUTTON, DIALOG, DIALOG_FOOTER, DIALOG_HEADER, DIALOG_TITLE, ERROR_BAR, FIELD_LABEL, INPUT, PRIMARY_BUTTON, RESULT_ROW, SECTION_HEADING, SMALL_BUTTON } from './dialogStyles'
+import { ICON_PROPS } from './iconProps'
 
 interface GroupInfoDialogProps {
   // The open group, kept up to date by the caller (title, members, owner).
@@ -36,10 +38,6 @@ type DialogError = ChatErrorKey | Extract<GroupTitleCheck, { ok: false }>['error
 type Busy = 'rename' | 'add' | 'leave' | `remove:${string}` | `owner:${string}`
 
 const SEARCH_DELAY_MS = 300
-const BUTTON_CLASS =
-  'rounded-md px-2 py-1 text-xs font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60'
-const INPUT_CLASS =
-  'rounded-md border border-slate-300 px-3 py-2 text-base font-normal focus-visible:outline-2 focus-visible:outline-brand-500'
 
 // Rendered only while open. Every member can rename the group and add people; the owner
 // can also remove members and hand the group over. Anyone can leave.
@@ -153,11 +151,11 @@ export function GroupInfoDialog({
       onCancel={(event) => {
         if (busyRef.current) event.preventDefault()
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-0 shadow-xl backdrop:bg-slate-900/40"
+      className={DIALOG}
     >
       <div className="flex max-h-[85vh] flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
-          <h2 id={headingId} className="font-semibold">
+        <header className={`${DIALOG_HEADER} items-center`}>
+          <h2 id={headingId} className={DIALOG_TITLE}>
             {t('chat.groupDialog.title')}
           </h2>
           <button
@@ -165,14 +163,16 @@ export function GroupInfoDialog({
             onClick={() => dialogRef.current?.close()}
             disabled={pending}
             aria-label={t('chat.groupDialog.close')}
-            className="rounded-full px-2 py-1 text-xl leading-none text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-60"
+            className={CLOSE_BUTTON}
           >
-            <span aria-hidden="true">×</span>
+            <svg {...ICON_PROPS} strokeWidth={2}>
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
-          <form onSubmit={handleRename} className="flex flex-col gap-1">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-4">
+          <form onSubmit={handleRename} className="flex flex-col gap-1.5">
             <label htmlFor="group-name" className="text-sm font-medium">
               {t('chat.groupDialog.nameLabel')}
             </label>
@@ -186,12 +186,12 @@ export function GroupInfoDialog({
                   setError(null)
                 }}
                 autoComplete="off"
-                className={`${INPUT_CLASS} min-w-0 flex-1`}
+                className={`${INPUT} min-w-0 flex-1`}
               />
               <button
                 type="submit"
                 disabled={pending || nameUnchanged}
-                className="shrink-0 rounded-md bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className={PRIMARY_BUTTON}
               >
                 {busy === 'rename' ? t('chat.groupDialog.savingName') : t('chat.groupDialog.saveName')}
               </button>
@@ -199,23 +199,23 @@ export function GroupInfoDialog({
           </form>
 
           <section aria-labelledby="group-members-heading">
-            <h3 id="group-members-heading" className="mb-1 text-sm font-medium">
+            <h3 id="group-members-heading" className={`mb-1 ${SECTION_HEADING}`}>
               {t('chat.groupDialog.members', { count: conversation.memberIds.length })}
             </h3>
-            <ul className="-mx-4">
+            <ul className="-mx-5">
               {members.map((id) => {
                 const user = findUser(users, id)
                 const displayName = nameOf(id)
                 const isMe = id === currentUserId
                 return (
-                  <li key={id} className="flex items-center gap-3 px-4 py-2">
+                  <li key={id} className="flex items-center gap-3 px-5 py-2">
                     <Avatar id={id} name={displayName} avatarPath={user?.avatarPath ?? null} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">
-                        {displayName} {isMe && <span className="text-slate-500">{t('chat.groupDialog.you')}</span>}
+                        {displayName} {isMe && <span className="font-normal text-muted">{t('chat.groupDialog.you')}</span>}
                       </span>
                       {id === conversation.ownerId && (
-                        <span className="block text-xs text-brand-700">{t('chat.groupDialog.owner')}</span>
+                        <span className="mt-0.5 inline-block rounded-full bg-subtle px-2 py-0.5 text-xs font-medium text-muted">{t('chat.groupDialog.owner')}</span>
                       )}
                     </span>
                     {isOwner && !isMe && (
@@ -225,7 +225,7 @@ export function GroupInfoDialog({
                           onClick={() => handleMakeOwner(id)}
                           disabled={pending}
                           aria-label={t('chat.groupDialog.makeOwnerLabel', { name: displayName })}
-                          className={`${BUTTON_CLASS} text-slate-700`}
+                          className={`${SMALL_BUTTON} text-fg hover:bg-subtle`}
                         >
                           {busy === `owner:${id}` ? t('chat.groupDialog.working') : t('chat.groupDialog.makeOwner')}
                         </button>
@@ -234,7 +234,7 @@ export function GroupInfoDialog({
                           onClick={() => handleRemove(id)}
                           disabled={pending}
                           aria-label={t('chat.groupDialog.removeLabel', { name: displayName })}
-                          className={`${BUTTON_CLASS} text-red-700 hover:bg-red-50`}
+                          className={`${SMALL_BUTTON} text-danger hover:bg-danger-soft`}
                         >
                           {busy === `remove:${id}` ? t('chat.groupDialog.working') : t('chat.groupDialog.remove')}
                         </button>
@@ -249,7 +249,7 @@ export function GroupInfoDialog({
           <section aria-labelledby="group-add-heading" className="flex flex-col gap-2">
             <h3 id="group-add-heading" className="text-sm font-medium">
               {t('chat.groupDialog.addTitle')}{' '}
-              <span className="font-normal text-slate-500">
+              <span className="font-normal text-muted">
                 {seatsLeft > 0
                   ? t('chat.groupDialog.seatsLeft', { count: seatsLeft })
                   : t('chat.groupDialog.full', { total: GROUP_MAX_MEMBERS })}
@@ -265,7 +265,7 @@ export function GroupInfoDialog({
                       onClick={() => setPicked((current) => current.filter((item) => item.id !== profile.id))}
                       disabled={pending}
                       aria-label={t('chat.dialog.remove', { name: profile.displayName })}
-                      className="flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1 text-sm text-brand-700 hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-brand-500"
+                      className={CHIP}
                     >
                       {profile.displayName}
                       <span aria-hidden="true">×</span>
@@ -275,7 +275,7 @@ export function GroupInfoDialog({
               </ul>
             )}
 
-            <label className="flex flex-col gap-1 text-sm font-medium">
+            <label className={FIELD_LABEL}>
               {t('chat.dialog.searchLabel')}
               {/* type="text": in a search input, Escape clears the text instead of closing the dialog. */}
               <input
@@ -287,21 +287,21 @@ export function GroupInfoDialog({
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck={false}
-                className={INPUT_CLASS}
+                className={INPUT}
               />
             </label>
 
-            <div aria-live="polite" className="text-sm text-slate-500">
+            <div aria-live="polite" className="text-sm text-muted">
               {query.trim() !== '' && normalized === null && t('chat.dialog.invalidQuery')}
               {normalized !== null && (!searchSettled || search.status === 'loading') && t('chat.dialog.searching')}
               {searchSettled && search.status === 'error' && (
-                <span className="text-red-700">{t(search.error)}</span>
+                <span className="text-danger">{t(search.error)}</span>
               )}
               {searchSettled && search.status === 'ready' && results.length === 0 && t('chat.dialog.noResults')}
             </div>
 
             {searchSettled && results.length > 0 && (
-              <ul className="-mx-4">
+              <ul className="-mx-5">
                 {results.map((profile) => {
                   const inGroup = memberIds.has(profile.id)
                   const isPicked = picked.some((item) => item.id === profile.id)
@@ -314,15 +314,15 @@ export function GroupInfoDialog({
                           setPicked((current) => [...current, profile])
                         }}
                         disabled={pending || inGroup || isPicked || seatsLeft === 0}
-                        className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+                        className={RESULT_ROW}
                       >
                         <Avatar id={profile.id} name={profile.displayName} avatarPath={profile.avatarPath} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{profile.displayName}</span>
-                          <span className="block truncate text-sm text-slate-500">@{profile.username}</span>
+                          <span className="block truncate text-sm text-muted">@{profile.username}</span>
                         </span>
-                        {inGroup && <span className="text-sm text-slate-500">{t('chat.groupDialog.alreadyMember')}</span>}
-                        {isPicked && <span className="text-sm text-brand-700">{t('chat.dialog.added')}</span>}
+                        {inGroup && <span className="text-sm text-muted">{t('chat.groupDialog.alreadyMember')}</span>}
+                        {isPicked && <span className="text-sm text-accent-fg">{t('chat.dialog.added')}</span>}
                       </button>
                     </li>
                   )
@@ -335,7 +335,7 @@ export function GroupInfoDialog({
                 type="button"
                 onClick={handleAdd}
                 disabled={pending}
-                className="self-end rounded-md bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className={`self-end ${PRIMARY_BUTTON}`}
               >
                 {busy === 'add' ? t('chat.groupDialog.adding') : t('chat.groupDialog.add', { count: picked.length })}
               </button>
@@ -344,17 +344,17 @@ export function GroupInfoDialog({
         </div>
 
         {error && (
-          <p role="alert" className="border-t border-red-100 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <p role="alert" className={ERROR_BAR}>
             {t(error, { max: GROUP_TITLE_MAX_LENGTH, total: GROUP_MAX_MEMBERS })}
           </p>
         )}
 
-        <footer className="flex justify-between gap-2 border-t border-slate-200 px-4 py-3">
+        <footer className={`${DIALOG_FOOTER} justify-between`}>
           <button
             type="button"
             onClick={handleLeave}
             disabled={pending}
-            className="rounded-md px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className={DANGER_OUTLINE_BUTTON}
           >
             {busy === 'leave' ? t('chat.groupDialog.working') : t('chat.groupDialog.leave')}
           </button>
@@ -362,7 +362,7 @@ export function GroupInfoDialog({
             type="button"
             onClick={() => dialogRef.current?.close()}
             disabled={pending}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-60"
+            className={PRIMARY_BUTTON}
           >
             {t('chat.groupDialog.close')}
           </button>

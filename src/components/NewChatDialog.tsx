@@ -14,6 +14,8 @@ import type { Profile } from '../features/chat/types'
 import { useChatQuery } from '../features/chat/useChatQuery'
 import { useDebouncedValue } from '../features/chat/useDebouncedValue'
 import { Avatar } from './Avatar'
+import { CHIP, CLOSE_BUTTON, DIALOG, DIALOG_FOOTER, DIALOG_HEADER, DIALOG_TITLE, ERROR_BAR, FIELD_LABEL, INPUT, PRIMARY_BUTTON, RESULT_ROW, SECONDARY_BUTTON } from './dialogStyles'
+import { ICON_PROPS } from './iconProps'
 
 export type NewChatMode = 'direct' | 'group'
 
@@ -107,26 +109,28 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
       ref={dialogRef}
       aria-labelledby={headingId}
       onClose={onClose}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-0 shadow-xl backdrop:bg-slate-900/40"
+      className={DIALOG}
     >
       <form onSubmit={handleSubmit} className="flex max-h-[85vh] flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
-          <h2 id={headingId} className="font-semibold">
+        <header className={`${DIALOG_HEADER} items-center`}>
+          <h2 id={headingId} className={DIALOG_TITLE}>
             {mode === 'direct' ? t('chat.newChat') : t('chat.newGroup')}
           </h2>
           <button
             type="button"
             onClick={() => dialogRef.current?.close()}
             aria-label={t('chat.dialog.close')}
-            className="rounded-full px-2 py-1 text-xl leading-none text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            className={CLOSE_BUTTON}
           >
-            <span aria-hidden="true">×</span>
+            <svg {...ICON_PROPS} strokeWidth={2}>
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
           {mode === 'group' && (
-            <label className="flex flex-col gap-1 text-sm font-medium">
+            <label className={FIELD_LABEL}>
               {t('chat.dialog.groupTitle')}
               <input
                 ref={titleRef}
@@ -137,14 +141,14 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
                   setError(null)
                 }}
                 autoComplete="off"
-                className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal focus-visible:outline-2 focus-visible:outline-brand-500"
+                className={INPUT}
               />
             </label>
           )}
 
           {mode === 'group' && members.length > 0 && (
             <div>
-              <p className="mb-1 text-sm font-medium">
+              <p className="mb-1.5 text-sm font-medium">
                 {t('chat.dialog.selected', { count: members.length })}
               </p>
               <ul className="flex flex-wrap gap-2">
@@ -156,7 +160,7 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
                         setMembers((current) => current.filter((item) => item.id !== member.id))
                       }
                       aria-label={t('chat.dialog.remove', { name: member.displayName })}
-                      className="flex items-center gap-1 rounded-full bg-brand-50 px-3 py-1 text-sm text-brand-700 hover:bg-brand-100 focus-visible:outline-2 focus-visible:outline-brand-500"
+                      className={CHIP}
                     >
                       {member.displayName}
                       <span aria-hidden="true">×</span>
@@ -167,7 +171,7 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
             </div>
           )}
 
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className={FIELD_LABEL}>
             {t('chat.dialog.searchLabel')}
             {/* type="text": in a search input, Escape clears the text instead of closing the dialog. */}
             <input
@@ -184,21 +188,21 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal focus-visible:outline-2 focus-visible:outline-brand-500"
+              className={INPUT}
             />
           </label>
 
-          <div aria-live="polite" className="text-sm text-slate-500">
+          <div aria-live="polite" className="text-sm text-muted">
             {query.trim() !== '' && normalized === null && t('chat.dialog.invalidQuery')}
             {normalized !== null && (!searchSettled || search.status === 'loading') && t('chat.dialog.searching')}
             {searchSettled && search.status === 'error' && (
-              <span className="text-red-700">{t(search.error)}</span>
+              <span className="text-danger">{t(search.error)}</span>
             )}
             {searchSettled && search.status === 'ready' && results.length === 0 && t('chat.dialog.noResults')}
           </div>
 
           {searchSettled && results.length > 0 && (
-            <ul className="-mx-4">
+            <ul className="-mx-5">
               {results.map((profile) => {
                 const added = memberIds.has(profile.id)
                 return (
@@ -207,14 +211,14 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
                       type="button"
                       onClick={() => handlePick(profile)}
                       disabled={pending || added || (mode === 'group' && full)}
-                      className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      className={RESULT_ROW}
                     >
                       <Avatar id={profile.id} name={profile.displayName} avatarPath={profile.avatarPath} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{profile.displayName}</span>
-                        <span className="block truncate text-sm text-slate-500">@{profile.username}</span>
+                        <span className="block truncate text-sm text-muted">@{profile.username}</span>
                       </span>
-                      {added && <span className="text-sm text-brand-700">{t('chat.dialog.added')}</span>}
+                      {added && <span className="text-sm text-accent-fg">{t('chat.dialog.added')}</span>}
                     </button>
                   </li>
                 )
@@ -224,31 +228,31 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
         </div>
 
         {error && (
-          <p role="alert" className="border-t border-red-100 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <p role="alert" className={ERROR_BAR}>
             {t(error, { max: GROUP_TITLE_MAX_LENGTH, maxMembers: GROUP_MAX_MEMBERS - 1 })}
           </p>
         )}
 
         {mode === 'group' && (
-          <footer className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
+          <footer className={`${DIALOG_FOOTER} justify-end`}>
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+              className={SECONDARY_BUTTON}
             >
               {t('chat.dialog.cancel')}
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="rounded-md bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className={PRIMARY_BUTTON}
             >
               {pending ? t('chat.dialog.creating') : t('chat.dialog.create')}
             </button>
           </footer>
         )}
         {mode === 'direct' && pending && (
-          <p role="status" className="border-t border-slate-200 px-4 py-2 text-sm text-slate-500">
+          <p role="status" className="border-t border-line px-5 py-2 text-sm text-muted">
             {t('chat.dialog.creating')}
           </p>
         )}

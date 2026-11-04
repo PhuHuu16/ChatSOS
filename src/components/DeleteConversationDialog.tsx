@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ChatErrorKey } from '../features/chat/chatErrors'
+import { CLOSE_BUTTON, DANGER_BUTTON, DIALOG, DIALOG_FOOTER, DIALOG_HEADER, GHOST_BUTTON } from './dialogStyles'
+import { ICON_PROPS } from './iconProps'
 
 interface DeleteConversationDialogProps {
   // The conversation's name as the list shows it.
@@ -61,10 +63,10 @@ export function DeleteConversationDialog({
       onCancel={(event) => {
         if (pendingRef.current) event.preventDefault()
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-0 shadow-xl backdrop:bg-slate-900/40"
+      className={DIALOG}
     >
-      <header className="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3">
-        <h2 id={headingId} className="min-w-0 font-semibold wrap-break-word">
+      <header className={`${DIALOG_HEADER} items-start`}>
+        <h2 id={headingId} className="min-w-0 pt-1.5 text-base font-semibold wrap-break-word">
           {t('chat.deleteConversationDialog.title', { name: title })}
         </h2>
         <button
@@ -72,31 +74,33 @@ export function DeleteConversationDialog({
           onClick={() => dialogRef.current?.close()}
           disabled={pending}
           aria-label={t('chat.deleteConversationDialog.close')}
-          className="rounded-full px-2 py-1 text-xl leading-none text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-60"
+          className={CLOSE_BUTTON}
         >
-          <span aria-hidden="true">×</span>
+          <svg {...ICON_PROPS} strokeWidth={2}>
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </header>
 
-      <div className="flex flex-col gap-2 px-4 py-3 text-sm">
-        <p className="text-slate-700">{t('chat.deleteConversationDialog.body')}</p>
+      <div className="flex flex-col gap-2 px-5 py-4 text-sm">
+        <p className="text-fg">{t('chat.deleteConversationDialog.body')}</p>
         <div aria-live="polite">
-          {pending && <p className="text-slate-600">{t('chat.deleteConversationDialog.deleting')}</p>}
+          {pending && <p className="text-muted">{t('chat.deleteConversationDialog.deleting')}</p>}
           {error && (
-            <p role="alert" className="text-red-700">
+            <p role="alert" className="text-danger">
               {t(error)}
             </p>
           )}
         </div>
       </div>
 
-      <footer className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
+      <footer className={`${DIALOG_FOOTER} justify-end`}>
         <button
           ref={cancelRef}
           type="button"
           onClick={() => dialogRef.current?.close()}
           disabled={pending}
-          className="rounded-md px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-60"
+          className={GHOST_BUTTON}
         >
           {t('chat.deleteConversationDialog.cancel')}
         </button>
@@ -104,7 +108,7 @@ export function DeleteConversationDialog({
           type="button"
           onClick={() => void confirm()}
           disabled={pending}
-          className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className={DANGER_BUTTON}
         >
           {t('chat.deleteConversationDialog.confirm')}
         </button>

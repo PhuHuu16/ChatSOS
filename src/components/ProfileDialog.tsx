@@ -21,6 +21,8 @@ import {
 } from '../features/profile/saveProfile'
 import { useObjectUrl } from '../features/profile/useObjectUrl'
 import { Avatar } from './Avatar'
+import { CLOSE_BUTTON, DIALOG, DIALOG_FOOTER, DIALOG_HEADER, DIALOG_TITLE, FIELD_LABEL, INPUT, PRIMARY_BUTTON, SECONDARY_BUTTON } from './dialogStyles'
+import { ICON_PROPS } from './iconProps'
 
 interface ProfileDialogProps {
   // The signed-in user (from the session); the dialog only ever saves this user's profile.
@@ -63,9 +65,6 @@ function cleanupNotes(result: SaveProfileResult): CleanupNote[] {
   if (result.newFileKept) notes.push('profile.cleanup.newKept')
   return notes
 }
-
-const BUTTON_CLASS =
-  'rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60'
 
 // Rendered only while open. Closing it (Cancel, ×, Escape) drops every unsaved change.
 export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdated }: ProfileDialogProps) {
@@ -273,24 +272,26 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
       ref={dialogRef}
       aria-labelledby={headingId}
       onClose={onClose}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-xl bg-white p-0 shadow-xl backdrop:bg-slate-900/40"
+      className={DIALOG}
     >
       <form onSubmit={(event) => void handleSubmit(event)} noValidate className="flex max-h-[85vh] flex-col">
-        <header className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
-          <h2 id={headingId} className="font-semibold">
+        <header className={`${DIALOG_HEADER} items-center`}>
+          <h2 id={headingId} className={DIALOG_TITLE}>
             {t('profile.title')}
           </h2>
           <button
             type="button"
             onClick={() => dialogRef.current?.close()}
             aria-label={t('profile.close')}
-            className="rounded-full px-2 py-1 text-xl leading-none text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            className={CLOSE_BUTTON}
           >
-            <span aria-hidden="true">×</span>
+            <svg {...ICON_PROPS} strokeWidth={2}>
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
           <div className="flex items-center gap-4">
             {avatarChange.kind === 'new' && previewUrl ? (
               <img
@@ -323,29 +324,29 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={busy}
-                  className={BUTTON_CLASS}
+                  className={SECONDARY_BUTTON}
                 >
                   {processing ? t('profile.processingPhoto') : t('profile.changePhoto')}
                 </button>
                 {canRemove && (
-                  <button type="button" onClick={handleRemove} disabled={saving} className={BUTTON_CLASS}>
+                  <button type="button" onClick={handleRemove} disabled={saving} className={SECONDARY_BUTTON}>
                     {t('profile.removePhoto')}
                   </button>
                 )}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted">
                 {t('profile.photoHint', { maxMb: AVATAR_INPUT_MAX_MB })}
               </p>
             </div>
           </div>
 
           {avatarChange.kind !== 'none' && (
-            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
               {avatarChange.kind === 'remove' ? t('profile.removePending') : t('profile.photoPending')}
             </p>
           )}
 
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className={FIELD_LABEL}>
             {t('auth.fields.displayName')}
             <input
               ref={nameRef}
@@ -359,10 +360,10 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
               aria-invalid={nameError ? true : undefined}
               aria-describedby={nameError ? nameErrorId : undefined}
               disabled={saving}
-              className="rounded-md border border-slate-300 px-3 py-2 text-base font-normal focus-visible:outline-2 focus-visible:outline-brand-500 disabled:bg-slate-50"
+              className={INPUT}
             />
             {nameError && (
-              <span id={nameErrorId} className="text-sm font-normal text-red-700">
+              <span id={nameErrorId} className="text-sm font-normal text-danger">
                 {t(nameError)}
               </span>
             )}
@@ -370,8 +371,8 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
 
           <div className="flex flex-col gap-1 text-sm">
             <span className="font-medium">{t('auth.fields.username')}</span>
-            <span className="text-slate-700">@{base.username}</span>
-            <span className="text-xs text-slate-500">{t('profile.usernameHint')}</span>
+            <span className="text-fg">@{base.username}</span>
+            <span className="text-xs text-muted">{t('profile.usernameHint')}</span>
           </div>
         </div>
 
@@ -379,13 +380,13 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
           {message && (
             <div
               role={message.error ? 'alert' : 'status'}
-              className={`border-t px-4 py-2 text-sm ${
-                message.error ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-800'
+              className={`border-t border-line px-5 py-2 text-sm ${
+                message.error ? 'bg-danger-soft text-danger' : 'bg-success-soft text-success'
               }`}
             >
               <p>{message.text}</p>
               {notes.map((note) => (
-                <p key={note} className="mt-1 text-amber-900">
+                <p key={note} className="mt-1 text-warning">
                   {t(note)}
                 </p>
               ))}
@@ -393,14 +394,14 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
           )}
         </div>
 
-        <footer className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
-          <button type="button" onClick={() => dialogRef.current?.close()} className={BUTTON_CLASS}>
+        <footer className={`${DIALOG_FOOTER} justify-end`}>
+          <button type="button" onClick={() => dialogRef.current?.close()} className={SECONDARY_BUTTON}>
             {t('profile.cancel')}
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="rounded-md bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className={PRIMARY_BUTTON}
           >
             {saving
               ? t(avatarChange.kind === 'new' ? 'profile.savingWithPhoto' : 'profile.saving')
