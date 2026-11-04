@@ -83,6 +83,8 @@ export const vi = {
     loading: 'Đang tải…',
     retry: 'Thử lại',
     noConversations: 'Chưa có cuộc trò chuyện nào',
+    search: 'Tìm cuộc trò chuyện',
+    noSearchResults: 'Không tìm thấy cuộc trò chuyện',
     noMessages: 'Chưa có tin nhắn nào',
     newChat: 'Chat mới',
     newGroup: 'Nhóm mới',

@@ -14,6 +14,9 @@
   --color-auth-link: #a5d8ff;
   --color-auth-focus: #7cc0f0;
 
+  /* Focus ring on the dark sidebar, the same in both themes. */
+  --color-side-focus: #7cc0f0;
+
   /* Old brand colours: still used by screens not yet moved to the tokens below. */
   --color-brand-50: #e8f4fd;
   --color-brand-100: #cfe8fb;

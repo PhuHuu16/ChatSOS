@@ -82,6 +82,8 @@ export const en: Translation = {
     loading: 'Loading…',
     retry: 'Try again',
     noConversations: 'No chats yet',
+    search: 'Search chats',
+    noSearchResults: 'No chats found',
     noMessages: 'No messages yet',
     newChat: 'New chat',
     newGroup: 'New group',

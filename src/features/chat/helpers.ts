@@ -294,6 +294,22 @@ export function formatTime(iso: string, language: string): string {
   )
 }
 
+// Lower case without Vietnamese marks, so "nhom" finds "Nhóm" and "do" finds "Đỗ".
+function foldForSearch(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+}
+
+// True when the query (trimmed) is empty or found anywhere in the text.
+export function matchesSearch(text: string, query: string): boolean {
+  const needle = foldForSearch(query.trim())
+  return needle === '' || foldForSearch(text).includes(needle)
+}
+
 export function getInitials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean)
   const first = words[0]?.charAt(0) ?? ''

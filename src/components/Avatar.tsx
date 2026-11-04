@@ -15,11 +15,13 @@ interface AvatarProps {
   // The user's photo in the avatars bucket; the initials are shown without one.
   avatarPath?: string | null
   size?: keyof typeof SIZE_CLASSES
+  // 'square' (rounded corners) marks a group; people are round.
+  shape?: 'circle' | 'square'
 }
 
 // Decorative: the name is always rendered as text next to it. The initials stay underneath
 // the photo, so they show while it loads and whenever it cannot be shown.
-export function Avatar({ id, name, avatarPath = null, size = 'md' }: AvatarProps) {
+export function Avatar({ id, name, avatarPath = null, size = 'md', shape = 'circle' }: AvatarProps) {
   const { url, canRetry, retry } = useAvatarUrl(avatarPath)
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
@@ -33,7 +35,7 @@ export function Avatar({ id, name, avatarPath = null, size = 'md' }: AvatarProps
   return (
     <span
       aria-hidden="true"
-      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white ${SIZE_CLASSES[size]} ${getAvatarColorClass(id)}`}
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden ${shape === 'square' ? 'rounded-lg' : 'rounded-full'} font-semibold text-white ${SIZE_CLASSES[size]} ${getAvatarColorClass(id)}`}
     >
       {getInitials(name)}
       {url && url !== failedUrl && (

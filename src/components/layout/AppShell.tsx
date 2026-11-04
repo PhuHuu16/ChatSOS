@@ -404,7 +404,7 @@ export function AppShell() {
       )}
       <div className="flex min-h-0 flex-1">
         <div
-          className={`${selected ? 'hidden md:flex' : 'flex'} w-full border-r border-slate-200 md:w-80 md:shrink-0`}
+          className={`${selected ? 'hidden md:flex' : 'flex'} w-full md:w-75 md:shrink-0`}
         >
           <Sidebar
             list={list}
