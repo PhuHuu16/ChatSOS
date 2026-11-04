@@ -12,12 +12,10 @@ import { ICON_PROPS } from './iconProps'
 interface AttachmentViewProps {
   kind: 'image' | 'file'
   attachment: Attachment
-  // Still being sent: the file may not be uploaded yet, so it cannot be downloaded.
   pending?: boolean
 }
 
-// Images are shown inline; other files as a name, a size and a download button. Files
-// are never rendered as HTML: images use <img>, everything else downloads.
+// Hiển thị tệp đính kèm
 export function AttachmentView({ kind, attachment, pending = false }: AttachmentViewProps) {
   if (kind === 'image') return <ImageAttachment attachment={attachment} />
   return <FileAttachment attachment={attachment} pending={pending} />

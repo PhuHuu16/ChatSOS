@@ -4,8 +4,6 @@ import { TextField, type TextFieldProps } from './TextField'
 
 type PasswordInputProps = Omit<TextFieldProps, 'type' | 'trailing'>
 
-// The button's label names the action it performs next; aria-pressed is true while the
-// password is shown as text.
 export function PasswordInput(props: PasswordInputProps) {
   const { t } = useTranslation()
   const [visible, setVisible] = useState(false)
@@ -14,7 +12,6 @@ export function PasswordInput(props: PasswordInputProps) {
     <TextField
       {...props}
       type={visible ? 'text' : 'password'}
-      // While the password is visible as text, the keyboard must not alter it.
       autoCapitalize="none"
       autoCorrect="off"
       spellCheck={false}

@@ -1,28 +1,9 @@
-// ChatSOS · Edge Function phone-sign-in: sign in with a phone number and password.
-//
-// Supabase Auth signs in by email (its own phone sign-in needs a paid SMS provider), and
-// ChatSOS keeps the phone number in public.profiles, which clients cannot read. This
-// function finds the account's email with the secret key and signs in with it, so the
-// email never reaches the browser. The app then stores the session with setSession.
-//
-// Deploy with verify_jwt = false: callers are signed out, and the app sends only the
-// publishable key (not a JWT) in the apikey header.
-//
-// POST { phone, password } → 200 { access_token, refresh_token } or 4xx/5xx { code }.
-// The request handling (limit first, uniform answers, logging) is in handler.ts; this file
-// only connects it to Supabase. Needs migration 11 (phone_sign_in_check).
-//
-// Optional secret PHONE_SIGN_IN_IP_HEADER: the request header that holds the caller's IP
-// address. Leave it unset until it is verified that callers cannot forge that header;
-// unset means no per-IP limit, only the per-number one.
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
 import { createHandler } from './handler.ts'
 
 const CALL_TIMEOUT_MS = 5000
 const MIN_ERROR_MS = 1200
 
-// The "default" key from SUPABASE_PUBLISHABLE_KEYS / SUPABASE_SECRET_KEYS, or the legacy
-// anon / service_role key when the project has no new keys.
 function readKey(keysVar: string, legacyVar: string): string {
   const keys = Deno.env.get(keysVar)
   if (keys) {
@@ -30,7 +11,7 @@ function readKey(keysVar: string, legacyVar: string): string {
       const key = JSON.parse(keys).default
       if (typeof key === 'string' && key) return key
     } catch {
-      // Fall back to the legacy key below.
+      // Bỏ qua lỗi
     }
   }
   const legacy = Deno.env.get(legacyVar)
@@ -38,7 +19,6 @@ function readKey(keysVar: string, legacyVar: string): string {
   throw new Error(`${keysVar} and ${legacyVar} are not set`)
 }
 
-// Aborts each HTTP request after CALL_TIMEOUT_MS, so a timed-out call does not keep running.
 const timedFetch: typeof fetch = (input, init) => {
   const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS)
   const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout
@@ -50,7 +30,6 @@ const CLIENT_OPTIONS = {
   global: { fetch: timedFetch },
 }
 
-// Thrown with a code only: the handler logs the code and never the message.
 function failure(code: string | undefined, status?: number): Error {
   return Object.assign(new Error('call failed'), { code, status })
 }
@@ -75,7 +54,6 @@ const handler = createHandler(
       if (error) throw failure(error.code)
     },
     async findUserId(phone) {
-      // profiles_phone_key makes the number unique, so there is at most one row.
       const { data, error } = await admin.from('profiles').select('id').eq('phone', phone).maybeSingle()
       if (error) throw failure(error.code)
       return data ? data.id : null
@@ -86,8 +64,6 @@ const handler = createHandler(
       return data.user?.email ?? null
     },
     async signIn(email, password) {
-      // With the publishable key, exactly as the app would sign in with the email. A new
-      // client each time, so no session stays in memory between requests.
       const client = createClient(url, publishableKey, CLIENT_OPTIONS)
       const { data, error } = await client.auth.signInWithPassword({ email, password })
       if (error) return { ok: false, code: error.code ?? null }

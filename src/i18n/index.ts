@@ -13,7 +13,6 @@ export function isLanguage(value: unknown): value is Language {
   return SUPPORTED_LANGUAGES.some((language) => language === value)
 }
 
-// localStorage can be missing or throw (private mode, blocked site data, non-browser runtime).
 function readStoredLanguage(): Language | null {
   try {
     const stored = globalThis.localStorage?.getItem(STORAGE_KEY)
@@ -23,6 +22,7 @@ function readStoredLanguage(): Language | null {
   }
 }
 
+// Đa ngôn ngữ
 function syncLanguage(language: string) {
   if (!isLanguage(language)) return
   if (typeof document !== 'undefined') {
@@ -31,7 +31,7 @@ function syncLanguage(language: string) {
   try {
     globalThis.localStorage?.setItem(STORAGE_KEY, language)
   } catch {
-    // The choice just won't persist across reloads.
+    // Bỏ qua lỗi
   }
 }
 
@@ -45,9 +45,7 @@ void i18n.use(initReactI18next).init({
   lng: readStoredLanguage() ?? DEFAULT_LANGUAGE,
   fallbackLng: DEFAULT_LANGUAGE,
   supportedLngs: SUPPORTED_LANGUAGES,
-  // Translations are bundled, so initialise synchronously: no flash of raw keys.
   initAsync: false,
-  // React already escapes rendered text. Never pass t() output to dangerouslySetInnerHTML.
   interpolation: { escapeValue: false },
 })
 

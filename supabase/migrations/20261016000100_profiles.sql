@@ -1,9 +1,6 @@
--- ChatSOS · Phase 1 · migration 1/5: public profiles.
--- Run once in the Supabase SQL Editor, in file-name order.
--- Wrapped in a transaction: if any statement fails, nothing is applied.
-
 begin;
 
+-- Bảng hồ sơ người dùng
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   username text not null unique
@@ -14,7 +11,6 @@ create table public.profiles (
       and char_length(btrim(display_name)) >= 1
       and display_name !~ '[[:cntrl:]]'
     ),
-  -- Path in a future avatars bucket; it must live under the user's own folder.
   avatar_path text
     constraint profiles_avatar_path_valid check (
       avatar_path is null
@@ -26,14 +22,10 @@ create table public.profiles (
 comment on table public.profiles is
   'Public profile of each auth user. Holds no email or other private data.';
 
--- Lock the table down in the same transaction that creates it, so it is never
--- reachable through Supabase's default grants on the public schema.
 alter table public.profiles enable row level security;
 
 revoke all on table public.profiles from public, anon, authenticated;
 
--- Column-level grants: only these columns are readable (clients must list them;
--- select=* is rejected). username and id can never be changed by clients.
 grant select (id, username, display_name, avatar_path) on table public.profiles to authenticated;
 grant update (display_name, avatar_path) on table public.profiles to authenticated;
 
@@ -46,7 +38,7 @@ create policy "profiles: users update their own"
   using (id = (select auth.uid()))
   with check (id = (select auth.uid()));
 
--- Creates the profile from the sign-up metadata. Missing or invalid data aborts the sign-up.
+-- Tạo hồ sơ khi đăng ký
 create function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -72,7 +64,6 @@ begin
 end;
 $$;
 
--- Only the trigger may run it; it is not callable through the API.
 revoke all on function public.handle_new_user() from public, anon, authenticated;
 
 create trigger on_auth_user_created

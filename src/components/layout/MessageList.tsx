@@ -34,75 +34,49 @@ import { LoadStatus } from '../LoadStatus'
 
 interface MessageListProps {
   conversation: Conversation
-  // The newest page of the conversation's messages, oldest first.
   latest: ChatQueryState<Message[]>
-  // Messages sent or received since the chat screen opened, of every conversation.
   live: Message[]
-  // Not yet confirmed messages, of every conversation.
   pending: PendingMessage[]
   users: User[]
   currentUserId: string
   unreadCount: number
-  // The user's read marker for this conversation (ISO 8601), or null when none is read.
   readMarker: string | null
-  // The other members' read markers, by user id.
   othersRead: ReadonlyMap<string, string | null>
-  // Display names of the other members typing now.
   typingNames: string[]
-  // The newest copy of each message edited or recalled since the chat screen opened.
   updates: ReadonlyMap<string, Message>
-  // The message being edited in the composer, and the one waiting for the server to
-  // save an edit or a recall.
   editingId: string | null
   changingId: string | null
   onStartEdit: (message: Message) => void
   onRecall: (message: Message) => void
-  // Messages the user deleted for themselves in this session; the server leaves them out
-  // of every later load.
   hidden: ReadonlySet<string>
-  // The selected message ids while selecting, null otherwise.
   selectedIds: ReadonlySet<string> | null
-  // Starts selecting with `message`, or adds or removes it.
   onToggleSelect: (message: Message) => void
   onRetry: (message: PendingMessage) => void
   onDiscard: (message: PendingMessage) => void
-  // The user has seen the conversation up to the message created at `readAt`.
   onRead: (conversationId: string, readAt: string) => void
-  // Ids of people the shown messages name but `users` does not know (e.g. who left).
   onUnknownUsers: (ids: string[]) => void
 }
 
 interface OlderMessages {
-  // Every message loaded before the newest page, oldest first.
   messages: Message[]
-  // null until an older page has loaded.
   hasMore: boolean | null
   error: ChatErrorKey | null
 }
 
-// Side padding of every row; the receipt below lines up with the message text after the
-// 36px avatar column and the 12px gap (16 + 36 + 12 = 64px, 68px from md).
 const ROW_X = 'px-4 md:px-5'
 const TEXT_INSET = 'pr-4 pl-16 md:pr-5 md:pl-17'
 const SMALL_BUTTON_CLASS =
   'rounded px-1 font-medium underline hover:opacity-75 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent'
 const TOOL_BUTTON_CLASS =
   'inline-flex size-8 items-center justify-center rounded-md hover:bg-subtle focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50'
-// Within this distance (px) of the bottom, new messages keep the list scrolled down.
 const STICK_DISTANCE = 80
-// Older messages load when the list is scrolled this close (px) to the top.
 const LOAD_OLDER_DISTANCE = 200
-// Opening a conversation loads at most this many older pages to reach the first unread.
 const MAX_JUMP_PAGES = 3
-// Space (px) left above the first unread message for the divider.
 const JUMP_MARGIN = 48
-// Read receipts name at most this many readers, then "+N".
 const MAX_READER_NAMES = 3
-// How often (ms) the edit and recall actions are checked against their time limit.
 const CHANGE_WINDOW_TICK = 5000
 
-// The messages of one conversation. Render with `key` = conversation id: everything here
-// (older pages, scroll position, the unread divider) belongs to that conversation.
+// Danh sách tin nhắn
 export function MessageList({
   conversation,
   latest,
@@ -131,34 +105,21 @@ export function MessageList({
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Where unread messages started when the conversation was opened. The divider stays
-  // there while the user reads, even as the messages get marked read.
   const [openMarker] = useState(readMarker)
   const [openUnread] = useState(unreadCount)
-  // The list is positioned once after loading: at the first unread message, or the bottom.
-  // Until then it is hidden, so it does not jump while older pages load.
   const positionedRef = useRef(false)
   const [positioned, setPositioned] = useState(false)
   const jumpPagesRef = useRef(0)
-  // Whether the list is at (or near) the bottom, so new messages should keep it there.
   const stickRef = useRef(openUnread === 0)
   const [atBottom, setAtBottom] = useState(true)
 
   const [older, setOlder] = useState<OlderMessages>({ messages: [], hasMore: null, error: null })
   const [loadingOlder, setLoadingOlder] = useState(false)
   const loadingOlderRef = useRef(false)
-  // The first message in view and how far its bottom edge is (px) below the top of the
-  // list. When the messages change size (an image loads, older ones are added above), the
-  // list scrolls so that this message stays where it was.
   const anchorRef = useRef<{ id: string; bottom: number } | null>(null)
   const messagesRef = useRef<HTMLOListElement>(null)
-  // The "new messages" button scrolls smoothly to the bottom. Keeping a message in place
-  // while that runs stops it, so it is started again, until the bottom is reached or the
-  // user scrolls themselves.
   const seekingBottomRef = useRef(false)
 
-  // Own messages can be changed for a short time after sending; the actions disappear
-  // once it has passed (the database refuses later changes anyway).
   const [now, setNow] = useState(() => Date.now())
   const [menuFor, setMenuFor] = useState<string | null>(null)
   useEffect(() => {
@@ -166,8 +127,6 @@ export function MessageList({
     return () => clearInterval(timer)
   }, [])
 
-  // On touch screens the ⋯ button opens a message's toolbar (elsewhere it shows on hover
-  // and focus); it closes on a tap outside it or on Escape.
   useEffect(() => {
     if (menuFor === null) return
     const handlePointer = (event: PointerEvent) => {
@@ -197,21 +156,15 @@ export function MessageList({
     : []
   const selecting = selectedIds !== null
   const selectFull = (selectedIds?.size ?? 0) >= MESSAGE_SELECT_LIMIT
-  // Realtime can deliver the user's own message before the send request returns.
   const shownIds = new Set(shown.map((message) => message.id))
   const pendingHere = pending.filter(
     (message) => message.conversationId === conversation.id && !shownIds.has(message.id),
   )
-  // Pending messages already shown; null until the first render has been committed, so
-  // failed messages from before this list opened do not count as just written.
   const seenPendingRef = useRef<Set<string> | null>(null)
   const pendingIds = pendingHere.map((message) => message.id).join()
   const shownCount = shown.length + pendingHere.length
-  // Changes when a pending message fails or is retried, which changes its height.
   const pendingStatuses = pendingHere.map((message) => message.status).join()
   const newest = loaded ? shown.at(-1) : undefined
-  // "Sent" / "Seen" under the newest message, when it is the user's own and confirmed (a
-  // system line, e.g. "You renamed the group", gets none).
   const receiptFor =
     newest &&
     newest.senderId === currentUserId &&
@@ -250,7 +203,6 @@ export function MessageList({
   async function loadOlder() {
     const oldest = loaded?.[0]
     if (loadingOlderRef.current || !oldest || !hasMore) return
-    // The newest page is kept with the older ones: a later reload of it moves on.
     const newestPage = latestData ?? []
     loadingOlderRef.current = true
     setLoadingOlder(true)
@@ -270,8 +222,6 @@ export function MessageList({
     }))
   }
 
-  // The user has seen the newest message when the list is at the bottom and the tab is
-  // visible; everything up to it is then read.
   function markReadIfSeen() {
     if (!positionedRef.current || !newest || !stickRef.current) return
     if (document.visibilityState !== 'visible') return
@@ -284,8 +234,6 @@ export function MessageList({
     if (list) list.scrollTop = list.scrollHeight
   }
 
-  // The first message whose bottom edge is below the top of the list, and how far below.
-  // The rows are in order from top to bottom, so a binary search finds it.
   function findAnchor(list: HTMLElement): { id: string; bottom: number } | null {
     const rows = list.querySelectorAll<HTMLElement>('[data-message-id]')
     const top = list.getBoundingClientRect().top
@@ -307,10 +255,6 @@ export function MessageList({
     return { id, bottom: found.getBoundingClientRect().bottom - top }
   }
 
-  // The messages changed size: an image loaded, older messages were added above, a row
-  // changed. At the bottom the list stays there; otherwise it scrolls so that the message
-  // first in view is where it was. Without this, Safari (no scroll anchoring) and pages
-  // the browser does not anchor would move under the reader.
   const keepInView = useEffectEvent(() => {
     const list = listRef.current
     if (!list || !positionedRef.current) return
@@ -331,14 +275,11 @@ export function MessageList({
   useEffect(() => {
     const messages = messagesRef.current
     if (!messages) return
-    // Resize observers run after layout and before paint, so the move is never seen.
     const observer = new ResizeObserver(() => keepInView())
     observer.observe(messages)
     return () => observer.disconnect()
   }, [])
 
-  // Positions the list once after it loads: at the first unread message when there is
-  // one (loading a few older pages to reach it), otherwise at the bottom.
   const position = useEffectEvent(() => {
     const list = listRef.current
     if (positionedRef.current || !loaded || !list) return
@@ -346,7 +287,6 @@ export function MessageList({
       const oldest = loaded[0]
       const mayMissEarlierUnread =
         hasMore && (!oldest || timestampMicros(oldest.createdAt) > openMarkerMicros)
-      // If an older page fails to load, the list is shown with what it has.
       const canLoadMore = jumpPagesRef.current < MAX_JUMP_PAGES && !older.error
       if (mayMissEarlierUnread && canLoadMore) {
         if (!loadingOlderRef.current) {
@@ -365,7 +305,6 @@ export function MessageList({
           target.getBoundingClientRect().top - list.getBoundingClientRect().top - JUMP_MARGIN
         stickRef.current =
           list.scrollHeight - list.scrollTop - list.clientHeight <= STICK_DISTANCE
-        // Close enough to the end: show it all, down to the read receipt.
         if (stickRef.current) scrollToBottom()
         anchorRef.current = findAnchor(list)
         markReadIfSeen()
@@ -383,8 +322,6 @@ export function MessageList({
     position()
   }, [latestData, older.messages.length, older.hasMore, older.error])
 
-  // Keeps the newest message in view as messages are added or change, unless the user has
-  // scrolled up to read older ones. A message the user just wrote always scrolls into view.
   const followNewMessages = useEffectEvent(() => {
     const seen = seenPendingRef.current
     if (seen === null) {
@@ -406,21 +343,18 @@ export function MessageList({
     markReadFromEffect()
   }, [newest?.id])
 
-  // Names for people who are no longer members (system lines, older messages).
   const unknownIds = unknownUserIds(shown, users).join()
   const reportUnknown = useEffectEvent((ids: string) => onUnknownUsers(ids.split(',')))
   useEffect(() => {
     if (unknownIds) reportUnknown(unknownIds)
   }, [unknownIds])
 
-  // Messages that arrived while the tab was hidden are read once it is shown again.
   useEffect(() => {
     const handleVisibility = () => markReadFromEffect()
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
-  // "Hôm nay", "Hôm qua", or the date, for the separator above each day's first message.
   function dayText(iso: string): string {
     const days = daysAgo(iso, now)
     if (days <= 0) return t('chat.today')
@@ -474,8 +408,6 @@ export function MessageList({
           <LoadStatus status="error" error={older.error} onRetry={() => void loadOlder()} />
         )}
         {loaded && (loadingOlder || (!older.error && hasMore)) && (
-          // As tall while loading as the button, so the messages below do not move when a
-          // page starts loading.
           <div className="mb-2 flex h-7 items-center justify-center">
             {loadingOlder ? (
               <p role="status" className="text-sm text-muted">
@@ -501,7 +433,6 @@ export function MessageList({
         >
           {shown.map((message, index) => {
             const previous = shown[index - 1]
-            // A day separator above the first message of each day.
             const daySeparator = (!previous ||
               daysAgo(previous.createdAt, Date.parse(message.createdAt)) !== 0) && (
               <li
@@ -522,7 +453,6 @@ export function MessageList({
                 {t('chat.unreadDivider')}
               </li>
             )
-            // "A added B": a centred line, never edited, recalled or selected.
             if (message.system) {
               return (
                 <Fragment key={message.id}>
@@ -542,8 +472,6 @@ export function MessageList({
               )
             }
             const isMine = message.senderId === currentUserId
-            // The first message of a group shows the avatar, name and time; the next ones
-            // from the same sender only their content (the time shows on hover).
             const head = isFirstUnread || startsGroup(previous, message)
             const senderName = nameOf(message.senderId)
             const recalled = message.deletedAt !== null
@@ -562,9 +490,6 @@ export function MessageList({
               <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
             )
 
-            // Every sent message can be selected; own ones can also be changed for a while.
-            // With a mouse the toolbar shows on hover (and on focus, for the keyboard); on
-            // touch screens the ⋯ button opens it.
             const toolbar = !selecting && (
               <>
                 <div
@@ -648,8 +573,6 @@ export function MessageList({
                 {divider}
                 <li
                   data-message-id={message.id}
-                  // While selecting, a click anywhere on the row toggles it; the checkbox is
-                  // the keyboard and screen reader way to do the same.
                   onClick={selecting ? () => onToggleSelect(message) : undefined}
                   className={`group relative flex gap-3 ${ROW_X} ${head ? 'pt-2' : 'pt-0.5'} pb-0.5 ${rowColour} ${
                     selecting ? 'cursor-pointer' : ''
@@ -661,7 +584,6 @@ export function MessageList({
                       checked={selected}
                       disabled={!selected && selectFull}
                       onChange={() => onToggleSelect(message)}
-                      // The row's own click handler would toggle it a second time.
                       onClick={(event) => event.stopPropagation()}
                       aria-label={t('chat.selectMessage')}
                       className="mt-1 size-4 shrink-0 self-start accent-accent"
@@ -688,7 +610,6 @@ export function MessageList({
                   </div>
                   <div
                     className={`min-w-0 flex-1 ${changing ? 'opacity-60' : ''} ${
-                      // Links and buttons inside must not act while the row is a checkbox.
                       selecting ? 'pointer-events-none' : ''
                     }`}
                   >

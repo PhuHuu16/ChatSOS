@@ -25,15 +25,12 @@ import { CLOSE_BUTTON, DIALOG, DIALOG_FOOTER, DIALOG_HEADER, DIALOG_TITLE, FIELD
 import { ICON_PROPS } from './iconProps'
 
 interface ProfileDialogProps {
-  // The signed-in user (from the session); the dialog only ever saves this user's profile.
   currentUserId: string
   profile: OwnProfile
   onClose: () => void
-  // The profile as the database now stores it: after a save, or after reloading it.
   onProfileUpdated: (profile: OwnProfile) => void
 }
 
-// A picked photo is kept in the dialog until Save uploads it.
 type AvatarChange = { kind: 'none' } | { kind: 'new'; blob: Blob } | { kind: 'remove' }
 
 type Status =
@@ -48,7 +45,6 @@ type Status =
   | { kind: 'failed'; error: ProfileSaveErrorKey | AvatarUploadErrorKey }
   | { kind: 'image'; error: AvatarImageErrorKey }
 
-// Extra lines about files that could not be cleaned up, shown under the main message.
 type CleanupNote =
   | 'profile.cleanup.oldNotConfirmed'
   | 'profile.cleanup.oldFailed'
@@ -66,13 +62,12 @@ function cleanupNotes(result: SaveProfileResult): CleanupNote[] {
   return notes
 }
 
-// Rendered only while open. Closing it (Cancel, ×, Escape) drops every unsaved change.
+// Hồ sơ cá nhân
 export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdated }: ProfileDialogProps) {
   const { t } = useTranslation()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  // The stored profile the next save compares against (compare-and-set).
   const [base, setBase] = useState(profile)
   const [name, setName] = useState(profile.displayName)
   const [nameTouched, setNameTouched] = useState(false)
@@ -82,9 +77,7 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const [notes, setNotes] = useState<CleanupNote[]>([])
-  // Blocks a second save before the saving state has re-rendered.
   const savingRef = useRef(false)
-  // Only the newest picked photo may update the dialog.
   const pickRef = useRef(0)
 
   useEffect(() => {
@@ -105,7 +98,6 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
 
   async function handlePick(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    // Lets the same file be picked again later. A cancelled picker changes nothing.
     event.target.value = ''
     if (!file) return
     const pick = ++pickRef.current
@@ -131,13 +123,10 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
     pickRef.current += 1
     setProcessing(false)
     setPreviewBlob(null)
-    // Without a stored avatar there is nothing to remove: only the picked photo is dropped.
     setAvatarChange(base.avatarPath === null ? { kind: 'none' } : { kind: 'remove' })
     showStatus({ kind: 'idle' })
   }
 
-  // Takes a profile read from the database as the new base. What the user typed or picked
-  // stays, so they decide whether to save it again.
   function adoptBase(stored: OwnProfile) {
     setBase(stored)
     onProfileUpdated(stored)
@@ -180,7 +169,6 @@ export function ProfileDialog({ currentUserId, profile, onClose, onProfileUpdate
     try {
       const result = await saveProfile(currentUserId, base, name.trim(), request).catch(() => null)
       if (result === null) {
-        // Should not happen; what was stored is not known, so it is read again.
         await reloadAfter('unknown', [])
         return
       }

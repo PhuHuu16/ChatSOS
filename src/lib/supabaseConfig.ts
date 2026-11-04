@@ -1,8 +1,3 @@
-// Checks the Supabase settings the browser bundle is built with, so a misconfiguration
-// such as a pasted secret key fails loudly instead of shipping. It only reads the JWT
-// payload to see the role; it does not verify signatures and is not an authentication
-// or authorization control. Messages never include the URL or key value.
-
 export interface SupabaseConfig {
   url: string
   key: string
@@ -19,6 +14,7 @@ const PUBLISHABLE_KEY = /^sb_publishable_[A-Za-z0-9_-]+$/
 const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 const SECRET_KEY_MESSAGE = `${KEY_VAR} looks like a secret key. Use the publishable (sb_publishable_…) key; a secret key must never reach the browser.`
 
+// Kiểm tra cấu hình Supabase
 export function validateSupabaseConfig(
   url: string | undefined,
   key: string | undefined,
@@ -59,7 +55,6 @@ function validateKey(value: string | undefined): string {
   if (key.startsWith('sb_secret_')) throw new SupabaseConfigError(SECRET_KEY_MESSAGE)
   if (PUBLISHABLE_KEY.test(key)) return key
 
-  // Legacy keys are JWTs; only the anon one is meant for clients.
   if (JWT.test(key)) {
     const role = readJwtRole(key)
     if (role === 'anon') return key

@@ -2,9 +2,6 @@ import type { TFunction } from 'i18next'
 import { findUser } from './helpers'
 import type { Message, User } from './types'
 
-// The line a system message shows, e.g. "An đã thêm Bình vào nhóm". The current user is
-// "Bạn" / "bạn"; someone whose profile is unknown (a deleted account, or not loaded yet) is
-// "Một người dùng". Empty for other messages.
 export function systemMessageText(
   t: TFunction,
   message: Message,

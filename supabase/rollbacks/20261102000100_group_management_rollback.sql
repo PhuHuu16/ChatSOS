@@ -1,14 +1,3 @@
--- ChatSOS · rollback of migration 12 (20261102000100_group_management.sql).
--- Run by hand in the Supabase SQL Editor, only when Phase 12 must be undone.
--- Wrapped in a transaction: when a check fails, nothing is changed.
---
--- Afterwards every member reads every message and file of their conversations again,
--- including those sent before they joined. Groups keep their current members and owner.
---
--- It refuses instead of deleting data: system messages do not fit the old message rules.
--- To accept losing those lines, run this yourself first:
---   delete from public.messages where kind = 'system';
-
 begin;
 
 lock table public.messages, public.conversation_removals in share row exclusive mode;
@@ -26,9 +15,6 @@ begin
 end;
 $$;
 
--- Reverse order. No IF EXISTS, no CASCADE: anything unexpected fails the whole rollback.
-
--- 5. RPCs
 drop function public.leave_group(uuid);
 drop function public.transfer_group_ownership(uuid, uuid);
 drop function public.remove_group_member(uuid, uuid);
@@ -36,14 +22,11 @@ drop function public.add_group_members(uuid, uuid[]);
 drop function public.rename_group(uuid, text);
 drop function private.lock_group(uuid);
 
--- 4. Removals (the rows only ever served Realtime)
 alter publication supabase_realtime drop table public.conversation_removals;
 drop table public.conversation_removals;
 
--- 3. One owner per group
 drop index public.conversation_members_one_owner;
 
--- 2. History: back to migration 5 (files) and migration 9 (messages)
 drop policy "attachments: members read files of messages they can see" on storage.objects;
 create policy "attachments: members can read"
   on storage.objects for select to authenticated
@@ -74,7 +57,6 @@ create policy "messages: members read what they have not deleted"
   );
 drop function private.member_since(uuid);
 
--- 1. System messages: functions as in migrations 6 and 4, policy and checks as before.
 create or replace function private.guard_message_update()
 returns trigger
 language plpgsql
@@ -129,8 +111,6 @@ begin
     return new;
   end if;
 
-  -- Non-members and spoofed senders are rejected by RLS right after this trigger;
-  -- returning early means the checks below reveal nothing to them.
   if new.sender_id is distinct from (select auth.uid())
      or not private.is_member(new.conversation_id) then
     return new;

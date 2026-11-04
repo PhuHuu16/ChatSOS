@@ -1,8 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { BrandLogo } from './BrandLogo'
 
-// Shown while the stored session is restored and while a redirect is pending, so a page
-// that is about to be replaced is never rendered.
 export function LoadingScreen() {
   const { t } = useTranslation()
 

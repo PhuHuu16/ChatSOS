@@ -10,9 +10,6 @@ import { SupabaseConfigError, validateSupabaseConfig } from './lib/supabaseConfi
 
 const root = createRoot(document.getElementById('root')!)
 
-// The same check src/lib/supabase.ts runs when it loads. Only a SupabaseConfigError means
-// "misconfigured"; any other exception is a bug and is rethrown, not shown as a config problem.
-// The error message is never displayed or logged.
 function hasValidSupabaseConfig(): boolean {
   try {
     validateSupabaseConfig(
@@ -33,8 +30,6 @@ if (!hasValidSupabaseConfig()) {
     </StrictMode>,
   )
 } else {
-  // App, and everything that may import src/lib/supabase.ts, is loaded only after the
-  // check. The rejection handler covers failures to fetch or evaluate the app modules only.
   void import('./App.tsx').then(
     ({ default: App }) => {
       root.render(

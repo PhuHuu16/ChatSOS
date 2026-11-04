@@ -1,21 +1,10 @@
--- ChatSOS · Phase 9 · migration 8: private avatars bucket for profile pictures.
--- Run after 20261028000200_typing_and_read_receipts.sql. Wrapped in a transaction.
--- Nothing of the attachments bucket (policies, functions, triggers) is changed.
-
 begin;
 
--- Private bucket: avatars are only reachable through signed URLs. The app always uploads
--- a 256x256 JPEG it has re-encoded itself, so JPEG up to 1 MiB is all that is accepted.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('avatars', 'avatars', false, 1048576, array['image/jpeg']);
 
--- One profile per file, and a fast lookup for private.avatar_in_use. NULLs stay allowed
--- any number of times (unique indexes treat NULLs as distinct).
 create unique index profiles_avatar_path_key on public.profiles (avatar_path);
 
--- True when some profile (any user's, not only the caller's) uses the file as its avatar.
--- SECURITY DEFINER so the answer does not depend on what the caller can read. It reads
--- only public.profiles, whose policies never look at storage, so there is no RLS loop.
 create function private.avatar_in_use(p_object_name text)
 returns boolean
 language sql
@@ -33,11 +22,7 @@ $$;
 revoke all on function private.avatar_in_use(text) from public, anon;
 grant execute on function private.avatar_in_use(text) to authenticated;
 
--- A new avatar_path must name a JPEG the profile's own user uploaded to the avatars
--- bucket, inside their own folder: "<user id>/<uuid>.jpg", lowercase, exactly 77
--- characters. The path rule is the same one the upload policy below uses.
--- SECURITY DEFINER (owner postgres) so storage.objects can be read whatever the
--- caller's storage policies allow; only the trigger runs it, never the API.
+-- Ảnh đại diện
 create function private.validate_profile_avatar()
 returns trigger
 language plpgsql
@@ -86,7 +71,6 @@ begin
     raise exception 'avatar must be a JPEG image' using errcode = '22023';
   end if;
 
-  -- Checked as text first so an unexpected value fails cleanly instead of a cast error.
   if coalesce(v_metadata ->> 'size', '') ~ '^[0-9]{1,18}$' then
     v_size := (v_metadata ->> 'size')::bigint;
   end if;
@@ -104,10 +88,6 @@ create trigger profiles_validate_avatar
   before insert or update of avatar_path on public.profiles
   for each row execute function private.validate_profile_avatar();
 
--- Read: avatars that some profile uses, and the caller's own uploads in their own folder
--- (needed to remove them: Storage deletes with a WHERE on the row, so RLS also applies
--- the SELECT policy). Other users' unused files stay unreadable. A signed URL issued
--- earlier keeps working until it expires, even after the file stops being used.
 create policy "avatars: read avatars in use or own files"
   on storage.objects for select to authenticated
   using (
@@ -121,9 +101,6 @@ create policy "avatars: read avatars in use or own files"
     )
   );
 
--- Upload: only "<own user id>/<uuid>.jpg", same path rule as the trigger above. There is
--- deliberately no UPDATE policy for this bucket, so existing files can never be
--- overwritten (upsert needs UPDATE).
 create policy "avatars: users upload to their own folder"
   on storage.objects for insert to authenticated
   with check (
@@ -133,8 +110,6 @@ create policy "avatars: users upload to their own folder"
     and split_part(name, '/', 1) = (select auth.uid())::text
   );
 
--- Delete: owners remove their own files once no profile uses them (an old avatar after
--- it was replaced or removed, or a new upload whose profile update failed).
 create policy "avatars: owners delete unused files"
   on storage.objects for delete to authenticated
   using (

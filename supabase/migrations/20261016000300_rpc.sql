@@ -1,12 +1,6 @@
--- ChatSOS · Phase 1 · migration 3/5: RPCs that create conversations.
--- Clients have no INSERT privilege on conversations / conversation_members,
--- so these validated functions are the only way to create them.
--- Run after 20261016000200_conversations.sql. Wrapped in a transaction.
-
 begin;
 
--- Returns the direct chat between the caller and p_other_user_id, creating it if needed.
--- Concurrent calls for the same pair converge on one row thanks to the unique direct_key.
+-- Tạo chat 1-1
 create function public.create_direct_conversation(p_other_user_id uuid)
 returns uuid
 language plpgsql
@@ -32,8 +26,6 @@ begin
 
   v_key := least(v_me::text, p_other_user_id::text) || ':' || greatest(v_me::text, p_other_user_id::text);
 
-  -- If another transaction is inserting the same key, this waits for it and then
-  -- does nothing; the select below then sees the committed row.
   insert into public.conversations (type, direct_key, created_by)
   values ('direct', v_key, v_me)
   on conflict (direct_key) do nothing
@@ -52,8 +44,7 @@ begin
 end;
 $$;
 
--- Creates a group owned by the caller. p_member_ids lists the OTHER members:
--- no nulls, no duplicates, not the caller, all existing users; 50 people max including the caller.
+-- Tạo nhóm
 create function public.create_group_conversation(p_title text, p_member_ids uuid[])
 returns uuid
 language plpgsql

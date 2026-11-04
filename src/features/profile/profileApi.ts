@@ -1,4 +1,3 @@
-// The signed-in user's own profile: loading it and saving changes to it.
 import { supabase } from '../../lib/supabase'
 import type { Database } from '../../types/database'
 import type { ChatResult } from '../chat/api'
@@ -6,10 +5,8 @@ import { toChatErrorKey } from '../chat/chatErrors'
 
 export interface OwnProfile {
   id: string
-  // Never changed by the app: the database does not let clients update it.
   username: string
   displayName: string
-  // "<user id>/<uuid>.jpg" in the avatars bucket, or null when there is no avatar.
   avatarPath: string | null
 }
 
@@ -29,6 +26,7 @@ function toOwnProfile(row: ProfileRow): OwnProfile {
   }
 }
 
+// Lấy hồ sơ
 export async function fetchOwnProfile(userId: string): Promise<ChatResult<OwnProfile>> {
   const response = await supabase
     .from('profiles')
@@ -42,7 +40,6 @@ export async function fetchOwnProfile(userId: string): Promise<ChatResult<OwnPro
   return { ok: true, data: toOwnProfile(response.data) }
 }
 
-// Only the fields to change; a missing field is left as it is.
 export interface ProfileChange {
   displayName?: string
   avatarPath?: string | null
@@ -51,17 +48,12 @@ export interface ProfileChange {
 export type ProfileSaveErrorKey = 'profile.errors.saveFailed' | 'profile.errors.notAllowed'
 
 export type ProfileSaveResult =
-  // Saved; the profile as the database now stores it (returned by the update itself).
   | { status: 'saved'; profile: OwnProfile }
-  // Not saved: the name or the avatar was changed elsewhere since `expected` was read.
   | { status: 'conflict' }
-  // Not saved: the database refused or failed the update.
   | { status: 'failed'; error: ProfileSaveErrorKey }
-  // No answer (e.g. the connection dropped): the update may or may not have happened.
   | { status: 'unknown' }
 
-// One UPDATE that only applies when the stored name and avatar are still the ones the
-// caller read (compare-and-set), so a change made in another tab is never overwritten.
+// Cập nhật hồ sơ
 export async function updateProfile(
   expected: OwnProfile,
   change: ProfileChange,
@@ -84,7 +76,6 @@ export async function updateProfile(
     .maybeSingle()
 
   if (response.error) {
-    // postgrest-js reports "no HTTP response" as status 0.
     if (response.status === 0) return { status: 'unknown' }
     const key = toChatErrorKey(response.status, response.error.code, 'change')
     return {
@@ -92,7 +83,6 @@ export async function updateProfile(
       error: key === 'chat.errors.notAllowed' ? 'profile.errors.notAllowed' : 'profile.errors.saveFailed',
     }
   }
-  // RLS limits the update to the caller's own row, so no row means the compare failed.
   if (!response.data) return { status: 'conflict' }
   return { status: 'saved', profile: toOwnProfile(response.data) }
 }

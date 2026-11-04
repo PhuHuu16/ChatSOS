@@ -24,9 +24,7 @@ const ICON_BUTTON =
 
 interface ChatPanelProps {
   conversation: Conversation | null
-  // The newest page of `conversation`'s messages, oldest first.
   messages: ChatQueryState<Message[]>
-  // Messages sent or received since the chat screen opened, of every conversation.
   live: Message[]
   pending: PendingMessage[]
   users: User[]
@@ -36,31 +34,21 @@ interface ChatPanelProps {
   onSendFile: (conversationId: string, file: Blob, checked: CheckedFile) => void
   onRetry: (message: PendingMessage) => void
   onDiscard: (message: PendingMessage) => void
-  // The newest copy of each message edited or recalled since the chat screen opened.
   updates: ReadonlyMap<string, Message>
-  // Resolve to null on success, or the error to show.
   onEdit: (message: Message, content: string) => Promise<ChatErrorKey | null>
   onRecall: (message: Message) => Promise<ChatErrorKey | null>
-  // Messages the user deleted for themselves in this session.
   hidden: ReadonlySet<string>
-  // Delete for me, and recall for everyone, several messages at once. Resolve to null on
-  // success, or the error to show.
   onHideMessages: (messages: Message[]) => Promise<ChatErrorKey | null>
   onRecallMessages: (messages: Message[]) => Promise<ChatErrorKey | null>
-  // Unread messages in `conversation`.
   unreadCount: number
-  // The user's read marker for `conversation` (ISO 8601), or null when none is read.
   readMarker: string | null
-  // The user has seen the conversation up to the message created at `readAt`.
   onRead: (conversationId: string, readAt: string) => void
-  // The other members' read markers in `conversation`, by user id.
   othersRead: ReadonlyMap<string, string | null>
-  // Opens the group info dialog (groups only).
   onOpenGroupInfo: () => void
-  // Ids of people the shown messages name but `users` does not know.
   onUnknownUsers: (ids: string[]) => void
 }
 
+// Khung chat
 export function ChatPanel({
   conversation,
   messages,
@@ -91,26 +79,20 @@ export function ChatPanel({
   const typingNames = typing.typingUserIds
     .map((id) => findUser(users, id)?.displayName)
     .filter((name): name is string => Boolean(name))
-  // The message being edited in the composer.
   const [editing, setEditing] = useState<Message | null>(null)
-  // The message whose edit or recall is waiting for the server.
   const [changingId, setChangingId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<{
     conversationId: string
     error: ChatErrorKey
   } | null>(null)
-  // The selected messages, by id, while selecting; and whether the delete dialog is open.
   const [selection, setSelection] = useState<{
     conversationId: string
     messages: ReadonlyMap<string, Message>
   } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  // Both belong to one conversation and are dropped when another one is opened.
   const editingHere = editing && editing.conversationId === conversation?.id ? editing : null
   const errorHere =
     actionError && actionError.conversationId === conversation?.id ? actionError.error : null
-  // Selecting ends when another conversation is opened (state adjusted during render, so
-  // nothing of it is ever shown with the wrong conversation).
   if (selection && selection.conversationId !== conversation?.id) {
     setSelection(null)
     setDeleteOpen(false)
@@ -123,7 +105,6 @@ export function ChatPanel({
     setEditing(message)
   }
 
-  // Starts selecting with `message`, or adds or removes it (up to MESSAGE_SELECT_LIMIT).
   function toggleSelect(message: Message) {
     setActionError(null)
     setEditing(null)
@@ -142,7 +123,6 @@ export function ChatPanel({
     setSelection(null)
   }
 
-  // Escape ends selecting; while the dialog is open, Escape closes only the dialog.
   const selecting = selected !== null
   useEffect(() => {
     if (!selecting || deleteOpen) return
@@ -153,11 +133,9 @@ export function ChatPanel({
     return () => document.removeEventListener('keydown', handleKey)
   }, [selecting, deleteOpen])
 
-  // The selected messages in their newest known version (e.g. recalled meanwhile).
   const selectedMessages = selected ? withUpdates([...selected.values()], updates) : []
 
   async function saveEdit(message: Message, content: string) {
-    // Nothing changed: nothing to save.
     if (content === message.content) {
       setEditing(null)
       return
@@ -312,7 +290,6 @@ export function ChatPanel({
         </div>
       )}
 
-      {/* Only hidden while selecting, so a half-written message is kept. */}
       <div hidden={selected !== null}>
         <Composer
           key={`composer:${conversation.id}:${editingHere?.id ?? ''}`}

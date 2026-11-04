@@ -1,18 +1,9 @@
--- ChatSOS · Phase 7 · migration 6: editing and recalling messages.
--- Run after 20261016000500_storage_realtime.sql. Wrapped in a transaction.
---
--- Senders may edit the text of their own text messages and recall (delete) any of
--- their own messages, within 2 minutes of sending them. A recalled message keeps its row, so the conversation's order,
--- read markers and unread counts are unchanged, but its content and attachment
--- fields are cleared: nothing of it remains readable, also not over Realtime.
-
 begin;
 
 alter table public.messages
   add column edited_at timestamptz,
   add column deleted_at timestamptz;
 
--- Same as before, plus a third shape: a recalled message has no content and no attachment.
 alter table public.messages drop constraint messages_kind_consistency;
 alter table public.messages add constraint messages_kind_consistency check (
   (
@@ -42,13 +33,10 @@ alter table public.messages add constraint messages_kind_consistency check (
   )
 );
 
--- Only text messages can have been edited.
 alter table public.messages add constraint messages_edited_text_only check (
   edited_at is null or kind = 'text'
 );
 
--- Clients may change only these two columns; the trigger below decides what they mean.
--- edited_at is deliberately absent: it always comes from the trigger.
 grant update (content, deleted_at) on table public.messages to authenticated;
 
 create policy "messages: senders change their own"
@@ -62,15 +50,7 @@ create policy "messages: senders change their own"
     and private.is_member(conversation_id)
   );
 
--- Turns a client update into an edit or a recall, with server timestamps.
---   * A recalled message is final: any further update leaves it unchanged, so
---     repeating a recall (e.g. after a lost reply) is harmless.
---   * Otherwise a message can be changed only within 2 minutes of being sent
---     (server clock); later attempts fail with SQLSTATE CS001.
---   * deleted_at set: recall. The given time is replaced by now(); content and
---     attachment are cleared.
---   * content changed: edit, text messages only. The check constraints validate it
---     like a new message (visible text, at most 4000 characters).
+-- Sửa / thu hồi tin nhắn
 create function private.guard_message_update()
 returns trigger
 language plpgsql
@@ -117,8 +97,6 @@ create trigger messages_guard_update
   before update on public.messages
   for each row execute function private.guard_message_update();
 
--- True when no message refers to the stored file (never sent, or its message was
--- recalled). SECURITY DEFINER so the answer does not depend on what the caller can read.
 create function private.attachment_unused(p_object_name text)
 returns boolean
 language sql
@@ -136,9 +114,6 @@ $$;
 revoke all on function private.attachment_unused(text) from public, anon;
 grant execute on function private.attachment_unused(text) to authenticated;
 
--- Uploaders may remove their own files once no message uses them: after a recall, or
--- when a message that failed to send is discarded. Files in use can never be removed,
--- and there is still no UPDATE policy, so files cannot be overwritten.
 create policy "attachments: uploaders delete unused files"
   on storage.objects for delete to authenticated
   using (

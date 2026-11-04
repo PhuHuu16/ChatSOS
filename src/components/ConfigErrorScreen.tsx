@@ -4,14 +4,9 @@ import { LanguageSwitcher } from './LanguageSwitcher'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
 interface ConfigErrorScreenProps {
-  // 'config': the Supabase settings are missing or invalid.
-  // 'load': the application code could not be loaded.
-  // 'crash': the app hit an unexpected error while running.
   reason: 'config' | 'load' | 'crash'
 }
 
-// Rendered before the app is loaded, so it must never import Supabase code. It receives
-// no configuration values and shows only fixed, translated text.
 export function ConfigErrorScreen({ reason }: ConfigErrorScreenProps) {
   const { t } = useTranslation()
   const canReload = reason !== 'config'

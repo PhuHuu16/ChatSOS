@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* `dark:` follows the theme chosen in the app (src/lib/theme.ts), not only the OS setting. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
@@ -8,18 +7,14 @@
     "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
 
-  /* Sign-in pages: always light text on the dark background picture, in both themes. */
   --color-auth-card: rgb(17 12 40 / 0.62);
   --color-auth-control: rgb(17 12 40 / 0.5);
   --color-auth-link: #a5d8ff;
   --color-auth-focus: #7cc0f0;
 
-  /* Focus ring on the dark sidebar, the same in both themes. */
   --color-side-focus: #7cc0f0;
 }
 
-/* Colours by role. Each utility (bg-canvas, text-muted, border-line, …) reads a variable
-   whose value depends on the light or dark theme. */
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
@@ -119,7 +114,6 @@
 }
 
 @layer components {
-  /* Browser autofill paints inputs light blue; keep sign-in fields dark with white text. */
   .auth-input:-webkit-autofill,
   .auth-input:-webkit-autofill:hover,
   .auth-input:-webkit-autofill:focus {

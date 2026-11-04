@@ -7,12 +7,10 @@ import {
 } from '../lib/theme'
 
 interface ThemeSwitcherProps {
-  // Colours, hover and focus-ring colour for where the button sits (sidebar, sign-in pages).
   className?: string
 }
 
-// One icon button; each click moves light → dark → system. The icon and the accessible
-// name show the current choice.
+// Đổi giao diện sáng/tối
 export function ThemeSwitcher({ className = 'focus-visible:outline-accent' }: ThemeSwitcherProps) {
   const { t } = useTranslation()
   const preference = useThemePreference()

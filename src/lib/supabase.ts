@@ -7,8 +7,8 @@ const { url, key } = validateSupabaseConfig(
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 )
 
+// Kết nối Supabase
 export const supabase = createClient<Database>(url, key)
 
-// For requests the client does not make itself (the phone-sign-in Edge Function).
 export const supabaseUrl = url
 export const supabaseKey = key

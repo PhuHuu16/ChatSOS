@@ -3,15 +3,10 @@ import { fetchUsers } from './api'
 import type { User } from './types'
 
 export interface ExtraUsers {
-  // Profiles loaded on request, e.g. of people who have left a group.
   users: User[]
-  // Loads the profiles of `ids` not requested before. Safe to call on every render.
   request: (ids: string[]) => void
 }
 
-// Profiles the conversation list does not load: senders and system message targets who
-// are no longer members. Each id is requested once per session; a failed or empty answer
-// (e.g. a deleted account) is not retried, and the name shows as "someone".
 export function useExtraUsers(): ExtraUsers {
   const [users, setUsers] = useState<User[]>([])
   const requestedRef = useRef(new Set<string>())

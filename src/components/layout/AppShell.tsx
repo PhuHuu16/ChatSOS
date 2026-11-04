@@ -42,22 +42,17 @@ import { ProfileDialog } from '../ProfileDialog'
 import { ChatPanel } from './ChatPanel'
 import { Sidebar } from './Sidebar'
 
+// Khung chính
 export function AppShell() {
   const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<NewChatMode | null>(null)
   const { session, signOut } = useAuth()
-  // AppShell is only rendered for the signedIn status, so the session is present.
   const currentUserId = session?.user.id ?? ''
   const [signingOut, setSigningOut] = useState(false)
   const [signOutFailed, setSignOutFailed] = useState(false)
-  // Blocks a second click before the signingOut state has re-rendered the button.
   const signingOutRef = useRef(false)
 
-  // Never rejects, so the `void` call below cannot leave an unhandled rejection. It never
-  // navigates either: when the session was removed, the auth listener has already
-  // reported signedOut and the route guard replaces this screen. When it is still there,
-  // the status stays signedIn, the error is shown and the button can be used again.
   async function handleSignOut() {
     if (signingOutRef.current) return
     signingOutRef.current = true
@@ -67,7 +62,6 @@ export function AppShell() {
       const result = await signOut()
       if (!result.ok) setSignOutFailed(true)
     } catch {
-      // signOut() reports failures in its result; this covers an unexpected throw.
       setSignOutFailed(true)
     } finally {
       signingOutRef.current = false
@@ -79,15 +73,8 @@ export function AppShell() {
   const listData = list.status === 'ready' ? list.data : null
   const outgoing = useOutgoingMessages()
   const realtime = useRealtimeMessages(currentUserId, handleRealtimeLive)
-  // Messages the user deleted for themselves in this session. The server leaves them out
-  // of every later load; until then they are left out here.
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
-  // Conversations whose history the user deleted for themselves in this session, with the
-  // server's mark. Together with the loaded marks they hide the older messages still in
-  // memory; the server leaves those out of every later load.
   const [sessionClears, setSessionClears] = useState<ReadonlyMap<string, string>>(new Map())
-  // A group the user was removed from or left counts the same way from the removal on:
-  // added back, they see only what came after it, as the server already does.
   const clears = useMemo(() => {
     const marks = new Map(sessionClears)
     for (const [conversationId, removedAt] of realtime.removedAt) {
@@ -97,13 +84,10 @@ export function AppShell() {
     return clearMarks(listData?.conversations ?? [], marks)
   }, [listData, sessionClears, realtime.removedAt])
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null)
-  // Messages sent or received since the list loaded. They move their conversation up and
-  // become its last message without reloading the list.
   const live = useMemo(
     () => afterClear(withoutHidden([...outgoing.sent, ...realtime.received], hidden), clears),
     [outgoing.sent, realtime.received, hidden, clears],
   )
-  // Edits and recalls made here, and the ones Realtime reported; the newer copy wins.
   const [ownChanges, setOwnChanges] = useState<ReadonlyMap<string, Message>>(new Map())
   const updates = useMemo(() => {
     let merged = realtime.updated
@@ -118,9 +102,6 @@ export function AppShell() {
       ),
     [listData, live, updates, hidden, clears],
   )
-  // A conversation whose history the user deleted leaves the list until a new message
-  // arrives. The open one stays (e.g. reopened through "New chat"). A group the user was
-  // removed from or left leaves at once, even before the list reloads without it.
   const conversations = useMemo(
     () =>
       sortByActivity(
@@ -133,14 +114,11 @@ export function AppShell() {
       ),
     [listData, live, clears, lastMessages, selectedId, realtime.removed],
   )
-  // The user's own profile. A save or reload in the profile dialog replaces the loaded
-  // copy at once, and the new name shows everywhere without reloading the list.
   const ownProfileQuery = useChatQuery(currentUserId, fetchOwnProfile)
   const [ownProfileUpdate, setOwnProfileUpdate] = useState<OwnProfile | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const ownProfile =
     ownProfileUpdate ?? (ownProfileQuery.status === 'ready' ? ownProfileQuery.data : null)
-  // Profiles of people the loaded list does not include, e.g. who left a group.
   const extraUsers = useExtraUsers()
   const users = useMemo(() => {
     const listed = listData?.users ?? []
@@ -154,15 +132,10 @@ export function AppShell() {
     )
   }, [listData, ownProfileUpdate, extraUsers.users])
   const selected = conversations.find((conversation) => conversation.id === selectedId) ?? null
-  // The group whose info dialog is open: always the open conversation. It closes when the
-  // user opens another conversation or the group leaves the list (removed, left).
   const [groupInfoFor, setGroupInfoFor] = useState<string | null>(null)
   if (groupInfoFor !== null && selected?.id !== groupInfoFor) setGroupInfoFor(null)
   const groupInfo = groupInfoFor !== null && selected?.type === 'group' ? selected : null
   const messagesQuery = useChatQuery(selected?.id ?? null, fetchMessages)
-  // A page loaded before the history was deleted can show again for a moment when the
-  // conversation is reopened, until it reloads: leave its older messages out. Memoized so
-  // the open chat gets the same array until something changes.
   const loadedPage = messagesQuery.status === 'ready' ? messagesQuery.data : null
   const shownPage = useMemo(
     () => (loadedPage ? afterClear(loadedPage, clears) : null),
@@ -173,9 +146,7 @@ export function AppShell() {
       ? { ...messagesQuery, data: shownPage }
       : messagesQuery
 
-  // Read markers set in this session, by conversation id. The loaded ones may be older.
   const [readMarkers, setReadMarkers] = useState<ReadonlyMap<string, string>>(new Map())
-  // The same, plus the ones Realtime reported (e.g. from the user's other tabs).
   const ownReadMarkers = useMemo(() => {
     const markers = new Map(readMarkers)
     for (const conversation of conversations) {
@@ -196,7 +167,6 @@ export function AppShell() {
       ),
     [conversations, listData, live, currentUserId, ownReadMarkers, hidden, clears],
   )
-  // The other members' read markers in the open conversation, by user id.
   const othersRead = useMemo(() => {
     const markers = new Map<string, string | null>()
     for (const userId of selected?.memberIds ?? []) {
@@ -207,18 +177,14 @@ export function AppShell() {
     return markers
   }, [selected, realtime.memberReads, currentUserId])
 
-  // The same markers, updated at once: scroll events can call handleRead several times
-  // before the state above re-renders, and each marker should be sent only once.
   const sentMarkersRef = useRef(new Map<string, string>())
 
-  // Called by the open chat with the newest message the user can see.
   function handleRead(conversationId: string, readAt: string) {
     const loadedMarker = conversations.find((item) => item.id === conversationId)?.lastReadAt
     const marker = laterReadMarker(loadedMarker, sentMarkersRef.current.get(conversationId))
     if (marker !== null && timestampMicros(readAt) <= timestampMicros(marker)) return
     sentMarkersRef.current.set(conversationId, readAt)
     setReadMarkers((markers) => new Map(markers).set(conversationId, readAt))
-    // A failure only means the badge may come back after a reload; nothing to show.
     void markConversationRead(conversationId, currentUserId, readAt)
   }
 
@@ -235,15 +201,12 @@ export function AppShell() {
     return changeMessage(editMessage(message.id, content))
   }
 
-  // A recalled image or file is removed from storage too; no message uses it any more.
   async function handleRecall(message: Message) {
     const error = await changeMessage(recallMessage(message.id))
     if (!error && message.attachment) void removeAttachment(message.attachment.path)
     return error
   }
 
-  // Delete for me. On success the messages disappear here at once; the list is reloaded
-  // so each conversation's last message and unread count come from the server again.
   async function handleHideMessages(messages: Message[]): Promise<ChatErrorKey | null> {
     const result = await hideMessages(messages.map((message) => message.id)).catch(
       (): ChatResult<null> => ({ ok: false, error: 'chat.errors.deleteFailed' }),
@@ -258,8 +221,6 @@ export function AppShell() {
     return null
   }
 
-  // Recall for everyone. Only the messages the server reports as recalled are updated, and
-  // only their images and files are removed from storage.
   async function handleRecallMessages(messages: Message[]): Promise<ChatErrorKey | null> {
     const result = await recallMessages(messages.map((message) => message.id)).catch(
       (): ChatResult<Message[]> => ({ ok: false, error: 'chat.errors.changeFailed' }),
@@ -277,8 +238,6 @@ export function AppShell() {
     return recalled.size === messages.length ? null : 'chat.errors.recallPartial'
   }
 
-  // Deletes a conversation's history for the user only; other members keep it. It leaves
-  // the list (and closes, if open) until a new message arrives.
   async function handleClearConversation(conversation: Conversation): Promise<ChatErrorKey | null> {
     const result = await clearConversation(conversation.id).catch(
       (): ChatResult<string> => ({ ok: false, error: 'chat.errors.deleteConversationFailed' }),
@@ -290,15 +249,11 @@ export function AppShell() {
     return null
   }
 
-  // Messages sent while Realtime was not subscribed are never delivered, so what is shown
-  // is reloaded whenever the subscription (re)starts. Loaded data stays visible meanwhile.
   function handleRealtimeLive() {
     list.reload()
     messages.reload()
   }
 
-  // A file dropped on the page would make the browser open it and leave the app. The
-  // open chat's composer picks dropped files up itself.
   useEffect(() => {
     const keepFiles = (event: DragEvent) => {
       if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
@@ -308,15 +263,11 @@ export function AppShell() {
     return () => {
       document.removeEventListener('dragover', keepFiles)
       document.removeEventListener('drop', keepFiles)
-      // Signed URLs work for anyone who has them; forget them when the user leaves.
       clearAttachmentUrls()
       clearAvatarUrls()
     }
   }, [])
 
-  // Conversations and profiles are not sent by Realtime. A message or a membership in a
-  // conversation, or from a user, the list does not know (a chat someone just started
-  // with this user, a new group member) reloads the list, once per unknown id.
   const reloadList = list.reload
   const requestedRef = useRef(new Set<string>())
   useEffect(() => {
@@ -324,8 +275,6 @@ export function AppShell() {
     const knownConversations = new Set(listData.conversations.map((item) => item.id))
     const knownUsers = new Set(listData.users.map((user) => user.id))
     let reload = false
-    // A member was added, removed or left, the owner or the title changed: reload once
-    // per system message, to show the new members, owner and title.
     for (const message of realtime.received) {
       const key = `m:${message.id}`
       if (message.system && !requestedRef.current.has(key)) {
@@ -333,7 +282,6 @@ export function AppShell() {
         reload = true
       }
     }
-    // The user was removed from (or left) a group: the list reloads without it.
     for (const conversationId of realtime.removed) {
       const key = `r:${conversationId}`
       if (!requestedRef.current.has(key)) {
@@ -341,8 +289,6 @@ export function AppShell() {
         reload = true
       }
     }
-    // The user joined a conversation, maybe one the list knew before they were removed:
-    // reload once per join (`joined` only grows, so the index identifies it).
     realtime.joined.forEach((member, index) => {
       const key = `j:${index}`
       if (member.userId === currentUserId && !requestedRef.current.has(key)) {
@@ -355,7 +301,6 @@ export function AppShell() {
         conversationId: message.conversationId,
         userId: message.senderId,
       })),
-      // A new chat with this user, or a new member in one of their groups.
       ...realtime.joined,
     ]
     for (const { conversationId, userId } of seen) {
@@ -373,28 +318,24 @@ export function AppShell() {
     if (reload) reloadList()
   }, [listData, realtime.received, realtime.joined, realtime.removed, reloadList, currentUserId])
 
-  // Names for the senders and system lines of the last messages, when not members.
   const requestUsers = extraUsers.request
   useEffect(() => {
     const ids = unknownUserIds(lastMessages, users)
     if (ids.length > 0) requestUsers(ids)
   }, [lastMessages, users, requestUsers])
 
-  // The user left the group in the dialog: it leaves the list at once.
   function handleLeftGroup(conversationId: string) {
     realtime.markRemoved(conversationId)
     setSelectedId((current) => (current === conversationId ? null : current))
     list.reload()
   }
 
-  // The new chat opens as soon as the reloaded list contains it.
   function handleCreated(conversationId: string) {
     setDialog(null)
     setSelectedId(conversationId)
     list.reload()
   }
 
-  // On small screens only one column is visible: the list, or the open chat.
   return (
     <div className="flex h-full flex-col">
       {realtime.status === 'interrupted' && (

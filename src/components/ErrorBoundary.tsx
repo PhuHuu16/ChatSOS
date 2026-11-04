@@ -9,8 +9,7 @@ interface ErrorBoundaryState {
   crashed: boolean
 }
 
-// Shows an error screen with a reload button instead of a blank page when rendering
-// throws. React already reports the error in the console; no details are shown to users.
+// Bắt lỗi giao diện
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { crashed: false }
 

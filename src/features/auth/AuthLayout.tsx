@@ -8,13 +8,10 @@ import { cornerControl } from './authStyles'
 interface AuthLayoutProps {
   title: string
   children: ReactNode
-  // Shown under the card, e.g. the link between the login and register pages.
   footer?: ReactNode
-  // A wider card, for forms with fields side by side (register).
   wide?: boolean
 }
 
-// The picture is darkened a little so the white text on and around the card stays legible.
 const backgroundStyle = {
   backgroundImage: `linear-gradient(rgb(10 6 30 / 0.35), rgb(10 6 30 / 0.55)), url(${background})`,
 }

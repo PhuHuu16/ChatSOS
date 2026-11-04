@@ -55,23 +55,19 @@ function hasErrors(errors: RegisterErrors): boolean {
   return Object.values(errors).some((error) => error !== null)
 }
 
+// Đăng ký
 export function RegisterPage() {
   const { t } = useTranslation()
   const { signUp } = useAuth()
   const [values, setValues] = useState<RegisterValues>(EMPTY_VALUES)
-  // Field errors appear after the first submit attempt, then always follow the current
-  // values, including passwords cleared after a failed sign-up.
   const [submitted, setSubmitted] = useState(false)
   const [pending, setPending] = useState(false)
   const [serverError, setServerError] = useState<AuthErrorKey | null>(null)
-  // Set when the account was created but has no session until the email is confirmed.
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
-  // Blocks a second submit before the pending state has re-rendered the form.
   const pendingRef = useRef(false)
 
   const errors = submitted ? validate(values) : null
 
-  // Editing a field makes the previous server error out of date.
   function setField(name: keyof RegisterValues, value: string) {
     setValues((current) => ({ ...current, [name]: value }))
     setServerError(null)
@@ -110,7 +106,6 @@ export function RegisterPage() {
       setValues(EMPTY_VALUES)
       setConfirmationEmail(email)
     }
-    // With a session the route guard leaves this page, so there is nothing to do here.
   }
 
   if (confirmationEmail !== null) {
@@ -144,7 +139,6 @@ export function RegisterPage() {
       }
     >
       <form noValidate onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
-        {/* Pairs sit side by side from the sm breakpoint, stacked on phones. */}
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             label={t('auth.fields.username')}

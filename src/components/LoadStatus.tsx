@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { ChatErrorKey } from '../features/chat/chatErrors'
 
-// 'side' is for the dark sidebar; 'default' for the light chat panel.
 type Tone = 'default' | 'side'
 
 type LoadStatusProps = { tone?: Tone } & (
@@ -23,7 +22,6 @@ const TONE_CLASSES = {
   },
 } as const
 
-// Placeholder for a list that is loading or failed to load.
 export function LoadStatus(props: LoadStatusProps) {
   const { t } = useTranslation()
   const tone = TONE_CLASSES[props.tone ?? 'default']

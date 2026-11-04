@@ -1,22 +1,4 @@
--- ChatSOS · Phase 11 · migration 10: phone numbers and a user overview for admins.
--- Run after 20261030000100_delete_messages_and_conversations.sql. Wrapped in a transaction.
---
--- 1. profiles.phone: a Vietnamese mobile number, stored as +84xxxxxxxxx, one account per
---    number. Existing accounts keep null; new sign-ups must give one. Clients cannot read
---    the column (no grant), so numbers are never listed or shown to other users.
--- 2. handle_new_user also stores the phone from the sign-up data.
--- 3. hook_before_user_created: an Auth hook (enable it in Dashboard > Authentication >
---    Hooks > Before User Created) that rejects a taken or invalid username or phone with a
---    clear error before the account is created. Without it the same sign-ups still fail
---    in handle_new_user, but only with a generic HTTP 500.
--- 4. find_profile_by_phone: signed-in users find someone by their exact number. The
---    number itself is never returned.
--- 5. admin.users: every account with its profile and activity, for the Dashboard only
---    (Table Editor > schema "admin"). No password data. Not reachable through the API.
-
 begin;
-
--- 1. Phone column ---------------------------------------------------------------------
 
 alter table public.profiles
   add column phone text
@@ -29,9 +11,7 @@ comment on table public.profiles is
   'Profile of each auth user. Clients can read only id, username, display_name and '
   'avatar_path; phone has no client grant.';
 
--- Turns what a user typed into the stored form, or null when it is not a Vietnamese
--- mobile number. Accepts 0912345678, 84912345678 and +84912345678, with spaces, dots,
--- dashes or parentheses anywhere. Mirrored by normalizePhone in src/features/auth/validation.ts.
+-- Chuẩn hóa số điện thoại
 create function private.normalize_vn_phone(p_phone text)
 returns text
 language sql
@@ -46,12 +26,8 @@ as $$
   from (select regexp_replace(coalesce(p_phone, ''), '[[:space:].()-]', '', 'g') as v) as s;
 $$;
 
--- Only the SECURITY DEFINER functions below (owned by postgres) call it.
 revoke all on function private.normalize_vn_phone(text) from public, anon, authenticated;
 
--- 2. Sign-up stores the phone -----------------------------------------------------------
-
--- Same as migration 1, plus the phone. Missing or invalid data still aborts the sign-up.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -84,14 +60,7 @@ $$;
 
 revoke all on function public.handle_new_user() from public, anon, authenticated;
 
--- 3. Before User Created hook -------------------------------------------------------------
-
--- Called by Supabase Auth (role supabase_auth_admin) before it inserts the user. Returns
--- {} to allow, or an error whose message the app maps to a translated text (these
--- messages are the app's contract; keep them in sync with src/features/auth/authErrors.ts).
--- A request without ChatSOS sign-up data is allowed here and rejected by handle_new_user.
--- A race between two identical sign-ups is still caught by the unique constraints.
--- In public so the Dashboard hook picker lists it; no client role can execute it.
+-- Kiểm tra trước khi tạo tài khoản
 create function public.hook_before_user_created(event jsonb)
 returns jsonb
 language plpgsql
@@ -139,10 +108,7 @@ $$;
 revoke all on function public.hook_before_user_created(jsonb) from public, anon, authenticated;
 grant execute on function public.hook_before_user_created(jsonb) to supabase_auth_admin;
 
--- 4. Find someone by phone ------------------------------------------------------------------
-
--- Exact match only, never the caller, and without the number in the result. An invalid
--- number gives no rows (the app validates before calling).
+-- Tìm theo số điện thoại
 create function public.find_profile_by_phone(p_phone text)
 returns table (id uuid, username text, display_name text, avatar_path text)
 language plpgsql
@@ -173,15 +139,10 @@ $$;
 revoke all on function public.find_profile_by_phone(text) from public, anon;
 grant execute on function public.find_profile_by_phone(text) to authenticated;
 
--- 5. User overview for admins ---------------------------------------------------------------
-
--- Not in Settings > Data API > Exposed schemas, and no client role has any right on it.
 create schema admin;
 revoke all on schema admin from public, anon, authenticated;
 
--- security_invoker: whoever reads the view needs rights on auth.users and public.*
--- themselves (postgres in the Dashboard has them), so a stray grant on the view alone
--- would not expose anything. Never selects encrypted_password or any token column.
+-- Danh sách người dùng cho admin
 create view admin.users
 with (security_invoker = true)
 as

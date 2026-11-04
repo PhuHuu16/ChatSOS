@@ -23,13 +23,12 @@ interface NewChatDialogProps {
   mode: NewChatMode
   currentUserId: string
   onClose: () => void
-  // Called with the id of the new (or, for a direct chat, existing) conversation.
   onCreated: (conversationId: string) => void
 }
 
 const SEARCH_DELAY_MS = 300
 
-// Rendered only while open. Direct: pick one user. Group: name it and pick members.
+// Tạo cuộc trò chuyện mới
 export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewChatDialogProps) {
   const { t } = useTranslation()
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -40,19 +39,14 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
   const [members, setMembers] = useState<Profile[]>([])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<ChatErrorKey | GroupCheckErrorKey | null>(null)
-  // Blocks a second submit before the pending state has re-rendered.
   const pendingRef = useRef(false)
 
-  // "<username prefix>:<phone>", either part possibly empty; null when nothing can match.
   const parsed = parseUserSearch(query)
   const normalized = parsed && `${parsed.username ?? ''}:${parsed.phone ?? ''}`
   const searchKey = useDebouncedValue(normalized, SEARCH_DELAY_MS)
-  // The key embeds the caller so the loader stays a stable module-level function.
   const search = useChatQuery(searchKey === null ? null : `${currentUserId}:${searchKey}`, loadSearch)
   const searchSettled = searchKey === normalized
 
-  // showModal() gives focus trapping, Escape to close and the backdrop. It moves focus to
-  // the first focusable element (the close button), so the first field is focused after it.
   useEffect(() => {
     const dialog = dialogRef.current
     if (dialog && !dialog.open) dialog.showModal()
@@ -173,14 +167,12 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
 
           <label className={FIELD_LABEL}>
             {t('chat.dialog.searchLabel')}
-            {/* type="text": in a search input, Escape clears the text instead of closing the dialog. */}
             <input
               ref={searchRef}
               type="text"
               enterKeyHint="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              // Enter here must not submit the group form before it is complete.
               onKeyDown={(event) => {
                 if (event.key === 'Enter') event.preventDefault()
               }}
@@ -261,7 +253,6 @@ export function NewChatDialog({ mode, currentUserId, onClose, onCreated }: NewCh
   )
 }
 
-// key = "<current user id>:<username prefix>:<phone>". None of the three contains ":".
 function loadSearch(key: string) {
   const [userId = '', username = '', phone = ''] = key.split(':')
   return searchUsers({ username: username || null, phone: phone || null }, userId)

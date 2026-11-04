@@ -5,18 +5,13 @@ import { CLOSE_BUTTON, DANGER_BUTTON, DIALOG, DIALOG_FOOTER, DIALOG_HEADER, GHOS
 import { ICON_PROPS } from './iconProps'
 
 interface DeleteConversationDialogProps {
-  // The conversation's name as the list shows it.
   title: string
-  // Resolves to null on success, or the error to show.
   onConfirm: () => Promise<ChatErrorKey | null>
-  // Closed without deleting (Cancel, ×, Escape).
   onClose: () => void
-  // The conversation was deleted.
   onDone: () => void
 }
 
-// Rendered only while open. Asks once more before deleting a conversation's history for
-// the user (other members keep it).
+// Xóa cuộc trò chuyện
 export function DeleteConversationDialog({
   title,
   onConfirm,
@@ -28,10 +23,8 @@ export function DeleteConversationDialog({
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<ChatErrorKey | null>(null)
-  // Blocks a second click before the pending state has re-rendered.
   const pendingRef = useRef(false)
 
-  // Focus starts on Cancel, so Enter right after opening does not delete anything.
   useEffect(() => {
     const dialog = dialogRef.current
     if (dialog && !dialog.open) dialog.showModal()
@@ -59,7 +52,6 @@ export function DeleteConversationDialog({
       ref={dialogRef}
       aria-labelledby={headingId}
       onClose={onClose}
-      // While the request runs, Escape must not close the dialog and hide its result.
       onCancel={(event) => {
         if (pendingRef.current) event.preventDefault()
       }}

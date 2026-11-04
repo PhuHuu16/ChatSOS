@@ -24,12 +24,6 @@ import {
   validateRecoveryCode,
 } from './validation'
 
-// Password recovery in three steps: email → code from the email → new password.
-// Steps 1–2 run signed out. A correct code (or the email's link) signs the user in with
-// status 'recovering', and the route guard keeps them here on step 3 until the new
-// password is saved or the recovery is cancelled.
-
-// Supabase lets an address request a new email about once a minute.
 const RESEND_COOLDOWN_SECONDS = 60
 
 function ServerError({ error }: { error: AuthErrorKey | null }) {
@@ -42,18 +36,17 @@ function ServerError({ error }: { error: AuthErrorKey | null }) {
   )
 }
 
+// Quên mật khẩu
 export function ForgotPasswordPage() {
   const { status } = useAuth()
   return status === 'recovering' ? <NewPasswordStep /> : <RequestSteps />
 }
 
-// Steps 1 and 2. The answers never tell whether the address has an account.
 function RequestSteps() {
   const { t } = useTranslation()
   const { requestPasswordReset, verifyRecoveryCode } = useAuth()
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [email, setEmail] = useState('')
-  // The trimmed address the code was requested for.
   const [sentTo, setSentTo] = useState('')
   const [code, setCode] = useState('')
   const [submitted, setSubmitted] = useState(false)
@@ -61,7 +54,6 @@ function RequestSteps() {
   const [serverError, setServerError] = useState<AuthErrorKey | null>(null)
   const [resent, setResent] = useState(false)
   const [cooldown, setCooldown] = useState(0)
-  // Blocks a second submit before the pending state has re-rendered the form.
   const pendingRef = useRef(false)
 
   useEffect(() => {
@@ -116,7 +108,6 @@ function RequestSteps() {
     if (normalized === null) return
 
     const result = await run('verify', () => verifyRecoveryCode(sentTo, normalized))
-    // On success the status becomes 'recovering' and step 3 replaces this component.
     if (result && !result.ok) {
       setServerError(result.error)
       setCode('')
@@ -236,7 +227,7 @@ function RequestSteps() {
   )
 }
 
-// Step 3: signed in by the recovery, the new password is not saved yet.
+// Đặt mật khẩu mới
 function NewPasswordStep() {
   const { t } = useTranslation()
   const { session, updatePassword, cancelRecovery } = useAuth()
@@ -262,7 +253,6 @@ function NewPasswordStep() {
     const result = await updatePassword(password)
     pendingRef.current = false
     setPending(null)
-    // On success the status becomes 'signedIn' and the route guard opens the app.
     if (!result.ok) {
       setServerError(result.error)
       setPassword('')
@@ -278,9 +268,6 @@ function NewPasswordStep() {
     const result = await cancelRecovery()
     pendingRef.current = false
     setPending(null)
-    // Signed out, this page would show step 1 (it is open to signed-out users), so go to
-    // the login page instead. ok: false does not say whether the session is gone: if it
-    // is, the status already left 'recovering'; if not, the error is shown here.
     if (result.ok) navigate(PATHS.login, { replace: true })
     else setServerError('auth.errors.signOutFailed')
   }
@@ -289,7 +276,6 @@ function NewPasswordStep() {
     <AuthLayout title={t('auth.forgot.newPasswordTitle')}>
       <form noValidate onSubmit={(event) => void handleSave(event)} className="space-y-4">
         <p className={introText}>{t('auth.forgot.newPasswordIntro')}</p>
-        {/* Lets password managers save the new password under the right account. */}
         <input
           type="text"
           name="username"

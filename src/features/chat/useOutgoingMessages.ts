@@ -10,30 +10,24 @@ import {
 import type { ChatErrorKey } from './chatErrors'
 import type { Message } from './types'
 
-// A file being sent. The path is chosen once, so a retry reuses the uploaded file.
 export interface PendingUpload {
   file: Blob
   checked: CheckedFile
   path: string
 }
 
-// A message the server has not confirmed yet.
 export interface PendingMessage {
   id: string
   conversationId: string
-  // Text, already checked with checkTextMessage; empty for a file.
   content: string
   upload: PendingUpload | null
-  // Client clock; only used to show a time until the server confirms the message.
   createdAt: string
   status: 'sending' | 'failed'
   error: ChatErrorKey | null
 }
 
 export interface OutgoingMessages {
-  // Waiting for the server or failed, in the order they were written.
   pending: PendingMessage[]
-  // Confirmed by the server since the chat screen opened.
   sent: Message[]
   send: (conversationId: string, content: string) => void
   sendFile: (conversationId: string, file: Blob, checked: CheckedFile) => void
@@ -41,8 +35,7 @@ export interface OutgoingMessages {
   discard: (message: PendingMessage) => void
 }
 
-// Messages written in this session. Each one shows at once as pending and moves to `sent`
-// when the server confirms it. A failed one stays until it is retried or discarded.
+// Hàng đợi tin đang gửi
 export function useOutgoingMessages(): OutgoingMessages {
   const [pending, setPending] = useState<PendingMessage[]>([])
   const [sent, setSent] = useState<Message[]>([])
@@ -57,7 +50,6 @@ export function useOutgoingMessages(): OutgoingMessages {
       .then((result) => {
         if (result.ok) {
           setPending((list) => list.filter((item) => item.id !== message.id))
-          // A double retry can confirm the same message twice.
           setSent((list) =>
             list.some((item) => item.id === result.data.id) ? list : [...list, result.data],
           )
@@ -96,14 +88,12 @@ export function useOutgoingMessages(): OutgoingMessages {
   const sendFile = useCallback(
     (conversationId: string, file: Blob, checked: CheckedFile) => {
       const path = newAttachmentPath(conversationId, checked.extension)
-      // The picked image shows at once, and stays in memory once sent.
       if (checked.kind === 'image') setLocalAttachmentUrl(path, file)
       add(conversationId, '', { file, checked, path })
     },
     [add],
   )
 
-  // Same id as the first attempt, so a message that did reach the server is not stored twice.
   const retry = useCallback(
     (message: PendingMessage) => {
       if (message.status !== 'failed') return
@@ -117,8 +107,6 @@ export function useOutgoingMessages(): OutgoingMessages {
     [deliver],
   )
 
-  // A file an attempt already uploaded is removed too. If the message did reach the server
-  // (only its reply was lost), Storage keeps the file because the message uses it.
   const discard = useCallback((message: PendingMessage) => {
     if (message.status !== 'failed') return
     setPending((list) => list.filter((item) => item.id !== message.id))

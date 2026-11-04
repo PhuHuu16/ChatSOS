@@ -8,25 +8,20 @@ import { CLOSE_BUTTON, DIALOG, DIALOG_FOOTER, DIALOG_HEADER, DIALOG_TITLE, GHOST
 import { ICON_PROPS } from './iconProps'
 
 interface DeleteMessagesDialogProps {
-  // The selected messages, in their newest known version.
   messages: Message[]
   currentUserId: string
-  // Each resolves to null on success, or the error to show.
   onHide: () => Promise<ChatErrorKey | null>
   onRecall: () => Promise<ChatErrorKey | null>
-  // The dialog was closed without finishing (Cancel, ×, Escape).
   onClose: () => void
-  // An action succeeded: the selection is over.
   onDone: () => void
 }
 
-// How often (ms) the recall option is checked against the time limit while open.
 const TICK_MS = 5000
 
 const OPTION_CLASS =
   'w-full rounded-lg border px-4 py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60'
 
-// Rendered only while open. The dialog itself is the confirmation: each option acts at once.
+// Xóa tin nhắn
 export function DeleteMessagesDialog({
   messages,
   currentUserId,
@@ -39,7 +34,6 @@ export function DeleteMessagesDialog({
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<ChatErrorKey | null>(null)
-  // Blocks a second click before the pending state has re-rendered.
   const pendingRef = useRef(false)
   const [now, setNow] = useState(() => Date.now())
 
@@ -71,7 +65,6 @@ export function DeleteMessagesDialog({
       ref={dialogRef}
       aria-labelledby={headingId}
       onClose={onClose}
-      // While a request runs, Escape must not close the dialog and hide its result.
       onCancel={(event) => {
         if (pendingRef.current) event.preventDefault()
       }}

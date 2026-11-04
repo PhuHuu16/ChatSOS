@@ -1,5 +1,3 @@
-// Reads and writes for the chat screens. Every request runs as the signed-in user, so RLS
-// already limits rows to conversations the user belongs to; nothing here filters by user id.
 import { supabase } from '../../lib/supabase'
 import { normalizePhone } from '../auth/validation'
 import type { Database } from '../../types/database'
@@ -35,12 +33,9 @@ type MessageRow = Pick<
   | 'system_target_id'
 >
 
-// Same limit as the messages_content_length check (char_length counts code points).
 export const MESSAGE_MAX_LENGTH = 4000
 export const MESSAGE_PAGE_SIZE = 50
-// Unread messages loaded per conversation; the badge shows "99+" beyond 99.
 export const UNREAD_LIMIT = 100
-// Keeps each `id=in.(...)` request URL well under server limits.
 const PROFILE_BATCH_SIZE = 100
 
 const MESSAGE_COLUMNS =
@@ -49,13 +44,9 @@ const MESSAGE_COLUMNS =
 export type ChatResult<T> = { ok: true; data: T } | { ok: false; error: ChatErrorKey }
 
 export interface ConversationList {
-  // Newest activity first: last message time, or creation time when there is none yet.
   conversations: Conversation[]
-  // Every member of the listed conversations, including the current user.
   users: User[]
-  // The newest message of each conversation that has one.
   lastMessages: Message[]
-  // Up to UNREAD_LIMIT newest unread messages per conversation.
   unread: UnreadMessage[]
 }
 
@@ -71,7 +62,6 @@ function fail(response: FailedResponse, action: ChatAction): { ok: false; error:
 function toAttachment(row: MessageRow): Attachment | null {
   const { attachment_path: path, attachment_name: name, attachment_size: size } = row
   const mime = row.attachment_mime
-  // The messages_kind_consistency check sets all four or none.
   if (path === null || name === null || size === null || mime === null) return null
   return { path, name, size, mime }
 }
@@ -88,7 +78,6 @@ function toMessage(row: MessageRow): Message {
     editedAt: row.edited_at,
     deletedAt: row.deleted_at,
   }
-  // The messages_kind_consistency check sets system_event exactly for system messages.
   if (row.kind === 'system' && row.system_event !== null) {
     message.system = { event: row.system_event, targetId: row.system_target_id }
   }
@@ -118,8 +107,6 @@ function isSystemEvent(event: unknown): event is SystemEvent {
   return typeof event === 'string' && SYSTEM_EVENTS.has(event)
 }
 
-// The new row of a Realtime INSERT or UPDATE event on messages, or null when the event
-// carries no usable row (e.g. an error event, which has no record).
 export function parseMessageRow(value: unknown): Message | null {
   if (typeof value !== 'object' || value === null) return null
   const row = value as Record<string, unknown>
@@ -139,7 +126,6 @@ export function parseMessageRow(value: unknown): Message | null {
   const text = (value: unknown) => (typeof value === 'string' ? value : null)
   const time = (value: unknown) =>
     typeof value === 'string' && !Number.isNaN(Date.parse(value)) ? value : null
-  // bigint may arrive as a number or a numeric string.
   const size = Number(row.attachment_size)
   const message = toMessage({
     id,
@@ -157,16 +143,12 @@ export function parseMessageRow(value: unknown): Message | null {
     system_event: isSystemEvent(row.system_event) ? row.system_event : null,
     system_target_id: text(row.system_target_id),
   })
-  // An image or file message without its attachment cannot be shown, unless recalled.
   const hasFile = kind === 'image' || kind === 'file'
   if (hasFile && message.attachment === null && message.deletedAt === null) return null
-  // Nor a system message without a known event (e.g. one added by a newer migration).
   if (kind === 'system' && !message.system) return null
   return message
 }
 
-// The row of a Realtime event on conversation_removals, or null when it has no usable row.
-// Realtime sends the user only their own rows (RLS).
 export function parseRemovalRow(value: unknown): Removal | null {
   if (typeof value !== 'object' || value === null) return null
   const { conversation_id, removed_at } = value as Record<string, unknown>
@@ -175,7 +157,6 @@ export function parseRemovalRow(value: unknown): Removal | null {
   return { conversationId: conversation_id, removedAt: removed_at }
 }
 
-// The row of a Realtime event on conversation_members, or null when it has no usable row.
 export function parseMemberRow(value: unknown): MemberRead | null {
   if (typeof value !== 'object' || value === null) return null
   const { conversation_id, user_id, last_read_at } = value as Record<string, unknown>
@@ -190,9 +171,7 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-// The profiles of these users. Any signed-in user can read every profile, so this also
-// names people who have left a group, e.g. in its system messages. Deleted accounts are
-// simply missing from the answer.
+// Lấy danh sách người dùng
 export async function fetchUsers(ids: string[]): Promise<ChatResult<User[]>> {
   const unique = [...new Set(ids)]
   const responses = await Promise.all(
@@ -214,8 +193,7 @@ export async function fetchUsers(ids: string[]): Promise<ChatResult<User[]>> {
   return { ok: true, data: users }
 }
 
-// `userId` is the signed-in user: it picks their read markers and leaves out their own
-// messages when counting unread ones.
+// Lấy danh sách cuộc trò chuyện
 export async function fetchConversationList(
   userId: string,
 ): Promise<ChatResult<ConversationList>> {
@@ -228,13 +206,11 @@ export async function fetchConversationList(
     return { ok: true, data: { conversations: [], users: [], lastMessages: [], unread: [] } }
   }
 
-  // RLS returns the members of the caller's conversations only.
   const membersResponse = await supabase
     .from('conversation_members')
     .select('conversation_id, user_id, role, last_read_at')
   if (membersResponse.error) return fail(membersResponse, 'load')
 
-  // RLS returns the caller's own marks only.
   const clearsResponse = await supabase
     .from('conversation_clears')
     .select('conversation_id, cleared_at')
@@ -244,7 +220,6 @@ export async function fetchConversationList(
   const memberIdsByConversation = new Map<string, string[]>()
   const lastReadAt = new Map<string, string | null>()
   const memberReadAt = new Map<string, Record<string, string | null>>()
-  // The conversation_members_one_owner index allows one owner per group.
   const ownerId = new Map<string, string>()
   for (const member of membersResponse.data) {
     if (member.role === 'owner') ownerId.set(member.conversation_id, member.user_id)
@@ -257,8 +232,6 @@ export async function fetchConversationList(
     if (member.user_id === userId) lastReadAt.set(member.conversation_id, member.last_read_at)
   }
 
-  // One small request per conversation that has messages: PostgREST has no
-  // "newest row per group" query. Fine for the MVP's conversation counts.
   const lastMessageResponses = await Promise.all(
     rows
       .filter((row) => row.last_message_at !== null)
@@ -279,7 +252,6 @@ export async function fetchConversationList(
     if (row) lastMessages.push(toMessage(row))
   }
 
-  // Every member, plus whoever a last message names who is no longer a member.
   const usersResponse = await fetchUsers([
     ...membersResponse.data.map((member) => member.user_id),
     ...messageUserIds(lastMessages),
@@ -287,8 +259,6 @@ export async function fetchConversationList(
   if (!usersResponse.ok) return usersResponse
   const users = usersResponse.data
 
-  // Only conversations with a message after the read marker can have unread messages.
-  // System messages ("A added B") never count as unread.
   const unreadResponses = await Promise.all(
     rows
       .filter((row) => {
@@ -334,8 +304,7 @@ export async function fetchConversationList(
   return { ok: true, data: { conversations, users, lastMessages, unread } }
 }
 
-// The newest MESSAGE_PAGE_SIZE messages of a conversation, oldest first. An empty list
-// also covers a conversation the caller cannot read: RLS hides it rather than failing.
+// Lấy tin nhắn
 export async function fetchMessages(conversationId: string): Promise<ChatResult<Message[]>> {
   const response = await supabase
     .from('messages')
@@ -348,8 +317,6 @@ export async function fetchMessages(conversationId: string): Promise<ChatResult<
   return { ok: true, data: response.data.map(toMessage).reverse() }
 }
 
-// The MESSAGE_PAGE_SIZE messages just before `before`, oldest first. Ties on created_at are
-// ordered by id, like every message query, so no message is skipped or repeated.
 export async function fetchMessagesBefore(
   conversationId: string,
   before: Pick<Message, 'id' | 'createdAt'>,
@@ -371,8 +338,6 @@ export type TextMessageCheck =
   | { ok: true; content: string }
   | { ok: false; error: 'chat.errors.messageEmpty' | 'chat.errors.messageTooLong' }
 
-// Mirrors the database rules for text messages: trimmed, at least one visible
-// character, at most MESSAGE_MAX_LENGTH code points.
 export function checkTextMessage(text: string): TextMessageCheck {
   const content = text.trim()
   if (content === '') return { ok: false, error: 'chat.errors.messageEmpty' }
@@ -380,9 +345,7 @@ export function checkTextMessage(text: string): TextMessageCheck {
   return { ok: true, content }
 }
 
-// `id` lets the caller show the message before the server confirms it (optimistic UI).
-// Sending again with the same id is safe: it never stores a second copy.
-// sender_id and created_at always come from the database.
+// Gửi tin nhắn
 export async function sendTextMessage(
   conversationId: string,
   text: string,
@@ -397,7 +360,6 @@ export async function sendTextMessage(
     .select(MESSAGE_COLUMNS)
     .single()
   if (!response.error) return { ok: true, data: toMessage(response.data) }
-  // 23505: the id is already stored, e.g. a retry after the first reply was lost.
   if (response.error.code === '23505') {
     return fetchStoredMessage(id, conversationId, { kind: 'text', content: checked.content })
   }
@@ -408,8 +370,6 @@ type StoredMessageMatch =
   | { kind: 'text'; content: string }
   | { kind: 'image' | 'file'; attachmentPath: string }
 
-// The stored copy of a message this client already sent. The id was generated here, so
-// a row with the same id, conversation and content (or attachment) is that message.
 async function fetchStoredMessage(
   id: string,
   conversationId: string,
@@ -430,9 +390,7 @@ async function fetchStoredMessage(
   return { ok: true, data: toMessage(response.data) }
 }
 
-// Sends an image or file message for an attachment the caller has already uploaded. The
-// database checks that the file exists, was uploaded by the caller and matches the
-// declared type and size. Sending again with the same id never stores a second copy.
+// Gửi tệp đính kèm
 export async function insertAttachmentMessage(
   conversationId: string,
   kind: 'image' | 'file',
@@ -460,8 +418,7 @@ export async function insertAttachmentMessage(
   return fail(response, 'send')
 }
 
-// Moves the user's read marker forward to `readAt` (a message's created_at). The filter
-// keeps it from moving back when another tab has already marked a newer message read.
+// Đánh dấu đã đọc
 export async function markConversationRead(
   conversationId: string,
   userId: string,
@@ -477,33 +434,25 @@ export async function markConversationRead(
   return { ok: true, data: null }
 }
 
-// Same rule as the profiles_username_format check.
 const USERNAME_QUERY = /^[a-z0-9_]{1,32}$/
 export const PROFILE_SEARCH_LIMIT = 20
 
-// The search text as a username prefix, or null when it cannot match any username.
 export function normalizeUsernameQuery(text: string): string | null {
   const query = text.trim().toLowerCase().replace(/^@/, '')
   return USERNAME_QUERY.test(query) ? query : null
 }
 
-// What the search box can match: a username prefix, an exact phone number, or both (a
-// username may be all digits, so a phone-shaped query also searches usernames).
 export interface UserSearch {
   username: string | null
-  // The stored form +84xxxxxxxxx.
   phone: string | null
 }
 
-// null when the text can match neither a username nor a phone number.
 export function parseUserSearch(text: string): UserSearch | null {
   const username = normalizeUsernameQuery(text)
   const phone = normalizePhone(text)
   return username === null && phone === null ? null : { username, phone }
 }
 
-// The user with exactly this number (stored form), the caller excluded. The number itself
-// is never returned.
 export async function findProfileByPhone(phone: string): Promise<ChatResult<Profile[]>> {
   const response = await supabase.rpc('find_profile_by_phone', { p_phone: phone })
   if (response.error) return fail(response, 'phoneSearch')
@@ -518,7 +467,7 @@ export async function findProfileByPhone(phone: string): Promise<ChatResult<Prof
   }
 }
 
-// Phone match first, then username matches, without duplicates.
+// Tìm người dùng
 export async function searchUsers(
   search: UserSearch,
   excludeUserId: string,
@@ -535,12 +484,10 @@ export async function searchUsers(
   return { ok: true, data: [...byPhone.data, ...rest].slice(0, PROFILE_SEARCH_LIMIT) }
 }
 
-// Users whose username starts with `query` (already normalized), the caller excluded.
 export async function searchProfiles(
   query: string,
   excludeUserId: string,
 ): Promise<ChatResult<Profile[]>> {
-  // "_" is a LIKE wildcard, so it is escaped; the other allowed characters are literal.
   const pattern = `${query.replace(/_/g, '\\_')}%`
   const response = await supabase
     .from('profiles')
@@ -561,7 +508,7 @@ export async function searchProfiles(
   }
 }
 
-// Returns the existing direct chat with that user, or creates it.
+// Tạo chat 1-1
 export async function createDirectChat(otherUserId: string): Promise<ChatResult<string>> {
   const response = await supabase.rpc('create_direct_conversation', {
     p_other_user_id: otherUserId,
@@ -570,9 +517,7 @@ export async function createDirectChat(otherUserId: string): Promise<ChatResult<
   return { ok: true, data: response.data }
 }
 
-// Same limits as create_group_conversation and the conversations_shape check.
 export const GROUP_TITLE_MAX_LENGTH = 100
-// Including the creator.
 export const GROUP_MAX_MEMBERS = 50
 
 export type GroupCheckErrorKey =
@@ -594,20 +539,17 @@ export type GroupTitleCheck =
         | 'chat.errors.groupTitleInvalid'
     }
 
-// The title rules of create_group_conversation and rename_group: trimmed, 1 to
-// GROUP_TITLE_MAX_LENGTH code points, no control characters.
 export function checkGroupTitle(title: string): GroupTitleCheck {
   const trimmed = title.trim()
   if (trimmed === '') return { ok: false, error: 'chat.errors.groupTitleRequired' }
   if ([...trimmed].length > GROUP_TITLE_MAX_LENGTH) {
     return { ok: false, error: 'chat.errors.groupTitleTooLong' }
   }
-  // eslint-disable-next-line no-control-regex -- control characters are what is rejected
+  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f]/.test(trimmed)) return { ok: false, error: 'chat.errors.groupTitleInvalid' }
   return { ok: true, title: trimmed }
 }
 
-// `memberIds` are the OTHER members; the creator is added by the database.
 export function checkGroupInput(title: string, memberIds: string[]): GroupCheck {
   const checked = checkGroupTitle(title)
   if (!checked.ok) return checked
@@ -619,6 +561,7 @@ export function checkGroupInput(title: string, memberIds: string[]): GroupCheck 
   return { ok: true, title: trimmed }
 }
 
+// Tạo nhóm
 export async function createGroupChat(
   title: string,
   memberIds: string[],
@@ -635,13 +578,7 @@ export async function createGroupChat(
   return { ok: true, data: response.data }
 }
 
-// Group management (migration 12). Each change is one RPC that locks the group, checks
-// the caller's role and writes the matching system message. Every member may rename the
-// group and add people; only the owner removes members or hands the group over. Repeating
-// a change that already happened (same title, someone already added or already removed)
-// changes nothing, so retrying after a lost answer is safe.
-
-// Returns the stored (trimmed) title.
+// Đổi tên nhóm
 export async function renameGroup(
   conversationId: string,
   title: string,
@@ -656,9 +593,7 @@ export async function renameGroup(
   return { ok: true, data: checked.title }
 }
 
-// `userIds` are the users to add; those already in the group are skipped. The group may
-// then have GROUP_MAX_MEMBERS members at most, or nobody is added (chat.errors.groupFull).
-// Returns how many were added.
+// Thêm thành viên
 export async function addGroupMembers(
   conversationId: string,
   userIds: string[],
@@ -674,7 +609,7 @@ export async function addGroupMembers(
   return { ok: true, data: response.data }
 }
 
-// Owner only. The removed member loses access at once and is told through Realtime.
+// Xóa thành viên
 export async function removeGroupMember(
   conversationId: string,
   userId: string,
@@ -687,7 +622,7 @@ export async function removeGroupMember(
   return { ok: true, data: null }
 }
 
-// Owner only: `userId` (a member) becomes the owner and the caller a plain member.
+// Chuyển quyền trưởng nhóm
 export async function transferGroupOwnership(
   conversationId: string,
   userId: string,
@@ -700,20 +635,15 @@ export async function transferGroupOwnership(
   return { ok: true, data: null }
 }
 
-// When the owner leaves, the member who joined first becomes the owner. When the last
-// member leaves, the group and its messages are deleted. A member who has already left
-// (e.g. in another tab) gets chat.errors.groupGone.
+// Rời nhóm
 export async function leaveGroup(conversationId: string): Promise<ChatResult<null>> {
   const response = await supabase.rpc('leave_group', { p_conversation_id: conversationId })
   if (response.error) return fail(response, 'group')
   return { ok: true, data: null }
 }
 
-// How long after sending the sender may edit or recall a message. The database enforces
-// it with its own clock; the app only uses it to hide the actions.
 export const MESSAGE_CHANGE_WINDOW_MS = 2 * 60 * 1000
 
-// RLS hides rows the caller may not change, so an update that matches none returns no row.
 async function changeMessage(
   id: string,
   change: Database['public']['Tables']['messages']['Update'],
@@ -729,26 +659,21 @@ async function changeMessage(
   return { ok: true, data: toMessage(response.data) }
 }
 
-// Replaces the text of the caller's own text message. The database records when.
+// Sửa tin nhắn
 export async function editMessage(id: string, text: string): Promise<ChatResult<Message>> {
   const checked = checkTextMessage(text)
   if (!checked.ok) return checked
   return changeMessage(id, { content: checked.content })
 }
 
-// Recalls the caller's own message for everyone. The database uses its own time and
-// clears the content and attachment. Recalling again changes nothing.
+// Thu hồi tin nhắn
 export async function recallMessage(id: string): Promise<ChatResult<Message>> {
   return changeMessage(id, { deleted_at: new Date().toISOString() })
 }
 
-// At most this many messages can be selected, hidden or recalled at once. It also keeps
-// the `id=in.(...)` request URL well under server limits.
 export const MESSAGE_SELECT_LIMIT = 100
 
-// Hides messages from the caller only ("delete for me"); other members still see them.
-// One statement, so either every message is hidden or none is. Hiding a message again
-// changes nothing, so retrying after a lost answer is safe.
+// Xóa tin nhắn phía mình
 export async function hideMessages(ids: string[]): Promise<ChatResult<null>> {
   if (ids.length === 0 || ids.length > MESSAGE_SELECT_LIMIT) {
     return { ok: false, error: 'chat.errors.deleteFailed' }
@@ -763,9 +688,7 @@ export async function hideMessages(ids: string[]): Promise<ChatResult<null>> {
   return { ok: true, data: null }
 }
 
-// Deletes a conversation's history for the caller only: messages sent up to now are hidden
-// from them, other members keep everything. Returns the new mark (server time). Clearing
-// again only moves the mark forward, so retrying after a lost answer is safe.
+// Xóa cuộc trò chuyện
 export async function clearConversation(conversationId: string): Promise<ChatResult<string>> {
   const response = await supabase.rpc('clear_conversation', {
     p_conversation_id: conversationId,
@@ -779,9 +702,6 @@ export async function clearConversation(conversationId: string): Promise<ChatRes
   return { ok: true, data: response.data }
 }
 
-// Recalls several of the caller's own messages for everyone in one statement: when one of
-// them is too old, the database refuses them all (CS001). RLS skips messages the caller
-// may not change, so the answer lists the messages that are now recalled.
 export async function recallMessages(ids: string[]): Promise<ChatResult<Message[]>> {
   if (ids.length === 0 || ids.length > MESSAGE_SELECT_LIMIT) {
     return { ok: false, error: 'chat.errors.changeFailed' }

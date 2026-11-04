@@ -1,14 +1,3 @@
--- ChatSOS · rollback of migration 10 (20261031000100_phone_and_admin_users.sql).
--- Run by hand in the Supabase SQL Editor, only when Phase 11 must be undone.
--- Wrapped in a transaction: when a check fails, nothing is changed.
---
--- FIRST turn off the hook in Dashboard > Authentication > Hooks > Before User Created.
--- While it points at a function that no longer exists, every sign-up fails.
---
--- It refuses instead of deleting data: dropping the phone column loses every stored
--- number. To accept that, run this yourself first:
---   update public.profiles set phone = null where phone is not null;
-
 begin;
 
 lock table public.profiles in share row exclusive mode;
@@ -26,14 +15,12 @@ begin
 end;
 $$;
 
--- Reverse order. No IF EXISTS, no CASCADE: anything unexpected fails the whole rollback.
 drop view admin.users;
 drop schema admin;
 
 drop function public.find_profile_by_phone(text);
 drop function public.hook_before_user_created(jsonb);
 
--- handle_new_user exactly as in migration 1 (no phone).
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql

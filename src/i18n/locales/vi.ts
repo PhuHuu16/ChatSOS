@@ -5,7 +5,6 @@ export const vi = {
   chat: {
     listLabel: 'Danh sách trò chuyện',
     emptyState: 'Chọn một cuộc trò chuyện để bắt đầu nhắn tin',
-    // Vietnamese has no plural forms; both keys exist so vi and en share one shape.
     members_one: '{{count}} thành viên',
     members_other: '{{count}} thành viên',
     direct: 'Trò chuyện riêng',
@@ -15,7 +14,6 @@ export const vi = {
     send: 'Gửi',
     sending: 'Đang gửi…',
     discard: 'Xoá',
-    // Vietnamese has no plural forms; both keys exist so vi and en share one shape.
     unread_one: '{{count}} tin nhắn chưa đọc',
     unread_other: '{{count}} tin nhắn chưa đọc',
     newMessages_one: '{{count}} tin nhắn mới',
@@ -52,7 +50,6 @@ export const vi = {
       close: 'Đóng',
     },
     selection: {
-      // Vietnamese has no plural forms; both keys exist so vi and en share one shape.
       count_one: 'Đã chọn {{count}} tin',
       count_other: 'Đã chọn {{count}} tin',
       limit: 'Tối đa {{max}} tin mỗi lần',
@@ -91,7 +88,6 @@ export const vi = {
     newChat: 'Chat mới',
     newGroup: 'Nhóm mới',
     groupInfo: 'Thông tin nhóm',
-    // System messages; actor = who did it, target = who it is about.
     system: {
       member_added: '{{actor}} đã thêm {{target}} vào nhóm',
       member_removed: '{{actor}} đã xoá {{target}} khỏi nhóm',
@@ -109,7 +105,6 @@ export const vi = {
       nameLabel: 'Tên nhóm',
       saveName: 'Lưu tên',
       savingName: 'Đang lưu…',
-      // Vietnamese has no plural forms; both keys exist so vi and en share one shape.
       members_one: 'Thành viên ({{count}})',
       members_other: 'Thành viên ({{count}})',
       owner: 'Trưởng nhóm',
@@ -309,7 +304,6 @@ export const vi = {
       emailInvalid: 'Email không hợp lệ',
       phoneInvalid: 'Số điện thoại di động Việt Nam không hợp lệ (ví dụ 0912 345 678)',
       signInIdInvalid: 'Nhập email hoặc số điện thoại di động Việt Nam',
-      // Keep the number in sync with PASSWORD_MIN_LENGTH in features/auth/validation.ts.
       passwordTooShort: 'Mật khẩu cần ít nhất 8 ký tự',
       passwordMismatch: 'Mật khẩu xác nhận không khớp',
       recoveryCodeInvalid: 'Nhập mã gồm các chữ số trong email (thường là 6 số)',

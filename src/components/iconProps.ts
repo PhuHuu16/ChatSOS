@@ -1,5 +1,3 @@
-// Shared attributes of the line icons (24×24 outline, drawn in the text colour). Spread
-// onto an <svg> and override the size where needed, e.g. <svg {...ICON_PROPS} width={16}>.
 export const ICON_PROPS = {
   'aria-hidden': true,
   width: 18,

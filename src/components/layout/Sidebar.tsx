@@ -22,36 +22,31 @@ import { LoadStatus } from '../LoadStatus'
 import { ThemeSwitcher } from '../ThemeSwitcher'
 
 interface SidebarProps {
-  // Load state of the list; the data itself comes in the props below.
   list: ChatQueryState<unknown>
   conversations: Conversation[]
-  // The newest message of each conversation that has one.
   lastMessages: Message[]
-  // Unread message count by conversation id; missing = none.
   unreadCounts: ReadonlyMap<string, number>
   users: User[]
   currentUserId: string
   selectedId: string | null
   onSelect: (conversationId: string) => void
-  // Asks to delete a conversation's history for the user (opens the confirmation).
   onDeleteConversation: (conversation: Conversation) => void
   onNewChat: () => void
   onNewGroup: () => void
   onSignOut: () => void
   signingOut: boolean
   signOutFailed: boolean
-  // The signed-in user's profile; null while it loads or when it failed to load.
   profile: OwnProfile | null
   profileFailed: boolean
   onRetryProfile: () => void
   onOpenProfile: () => void
 }
 
-// The sidebar is dark in both themes, so it uses the side-* colours throughout.
 const SIDE_FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-side-focus'
 const SIDE_ICON_COLOURS = 'text-side-muted hover:bg-side-hover hover:text-side-fg'
 const ICON_BUTTON = `inline-flex size-9 shrink-0 items-center justify-center rounded-lg ${SIDE_ICON_COLOURS} ${SIDE_FOCUS} disabled:cursor-not-allowed disabled:opacity-60`
 
+// Thanh bên
 export function Sidebar({
   list,
   conversations,
@@ -74,12 +69,9 @@ export function Sidebar({
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? DEFAULT_LANGUAGE
-  // The conversation whose ⋯ menu is open.
   const [menuFor, setMenuFor] = useState<string | null>(null)
-  // Text in the search box; filters the list by conversation title.
   const [query, setQuery] = useState('')
 
-  // An open menu closes on a click outside it or on Escape.
   useEffect(() => {
     if (menuFor === null) return
     const handlePointer = (event: PointerEvent) => {
@@ -154,7 +146,6 @@ export function Sidebar({
             <path d="m20 20-3.5-3.5" />
           </svg>
           <span className="sr-only">{t('chat.search')}</span>
-          {/* 16px text on phones: smaller text makes iOS Safari zoom in on focus. */}
           <input
             type="search"
             value={query}
@@ -187,10 +178,9 @@ export function Sidebar({
             const menuId = `conversation-menu-${conversation.id}`
             const metaColour = isSelected ? 'text-white/80' : 'text-side-muted'
 
-            // A system line ("You added B") already names who did it, so it gets none.
             let prefix = ''
             if (last?.system) {
-              // No prefix.
+              // Tin hệ thống: không có tiền tố
             } else if (last?.senderId === currentUserId) {
               prefix = `${t('chat.you')}: `
             } else if (last && conversation.type === 'group') {
@@ -199,13 +189,11 @@ export function Sidebar({
             }
 
             return (
-              // An open menu's row is raised above the rows after it, which would cover the menu.
               <li key={conversation.id} className={`group relative ${menuOpen ? 'z-10' : ''}`}>
                 <button
                   type="button"
                   onClick={() => onSelect(conversation.id)}
                   aria-current={isSelected ? 'true' : undefined}
-                  // On small screens the ⋯ button always shows, so the row leaves room for it.
                   className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-side-focus ${
                     isSelected ? 'bg-accent text-white' : 'hover:bg-side-hover'
                   } pr-11 md:pr-2`}
@@ -262,8 +250,6 @@ export function Sidebar({
                     </span>
                   </span>
                 </button>
-                {/* A separate button next to the row (a button cannot hold another one). On
-                    larger screens it shows on hover or focus, over the time and badge. */}
                 <div data-conversation-menu className="absolute top-1/2 right-2 -translate-y-1/2">
                   <button
                     type="button"

@@ -1,8 +1,3 @@
-// Hand-written to match supabase/migrations as of commit 8adde43, in the shape that
-// `supabase gen types` produces. Unlike generated types, Row / Insert / Update list only
-// what the authenticated role is GRANTed (verified in step 1B), so the compiler rejects
-// reads and writes the database would refuse: RLS filters rows, it does not hide columns.
-// `never` marks an operation clients have no privilege for. Keep in sync with the migrations.
 import type { ConversationType, MessageKind, SystemEvent } from '../features/chat/types'
 
 export type ConversationRole = 'owner' | 'member'
@@ -11,15 +6,12 @@ export type Database = {
   public: {
     Tables: {
       profiles: {
-        // created_at and phone exist but are not granted to authenticated (phone is
-        // only matched by find_profile_by_phone, never returned).
         Row: {
           id: string
           username: string
           display_name: string
           avatar_path: string | null
         }
-        // Created only by the on_auth_user_created trigger.
         Insert: never
         Update: {
           display_name?: string
@@ -37,7 +29,6 @@ export type Database = {
           created_at: string
           last_message_at: string | null
         }
-        // Created only through the create_*_conversation RPCs.
         Insert: never
         Update: never
         Relationships: []
@@ -70,12 +61,9 @@ export type Database = {
           created_at: string
           edited_at: string | null
           deleted_at: string | null
-          // Set exactly for system messages (kind 'system').
           system_event: SystemEvent | null
           system_target_id: string | null
         }
-        // sender_id and created_at are not granted: they always take their defaults. Only
-        // the database writes system messages (no grant on system_*, kind 'system' refused).
         Insert: {
           id?: string
           conversation_id: string
@@ -86,7 +74,6 @@ export type Database = {
           attachment_size?: number | null
           attachment_mime?: string | null
         }
-        // Only these are granted; the messages_guard_update trigger sets the rest.
         Update: {
           content?: string
           deleted_at?: string | null
@@ -99,11 +86,9 @@ export type Database = {
           message_id: string
           hidden_at: string
         }
-        // user_id and hidden_at are not granted: they always take their defaults.
         Insert: {
           message_id: string
         }
-        // Hiding is final: no UPDATE or DELETE privilege.
         Update: never
         Relationships: []
       }
@@ -113,7 +98,6 @@ export type Database = {
           conversation_id: string
           cleared_at: string
         }
-        // Read only: rows are written by clear_conversation().
         Insert: never
         Update: never
         Relationships: []
@@ -121,11 +105,9 @@ export type Database = {
       conversation_removals: {
         Row: {
           user_id: string
-          // No foreign key: the row outlives a group deleted when its last member leaves.
           conversation_id: string
           removed_at: string
         }
-        // Read only: rows are written by remove_group_member() and leave_group().
         Insert: never
         Update: never
         Relationships: []
@@ -151,7 +133,6 @@ export type Database = {
         Args: { p_conversation_id: string; p_title: string }
         Returns: undefined
       }
-      // Returns how many users were added (those already in the group are skipped).
       add_group_members: {
         Args: { p_conversation_id: string; p_user_ids: string[] }
         Returns: number

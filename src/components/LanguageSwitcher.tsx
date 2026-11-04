@@ -6,12 +6,11 @@ const DEFAULT_CLASS_NAME =
   'h-9 rounded-lg border border-line-strong bg-surface px-2 text-sm text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 
 interface LanguageSwitcherProps {
-  // Replaces the default look of the select (sidebar, sign-in pages).
   className?: string
-  // Shows the codes (VI, EN) instead of the names, for narrow places (sidebar footer).
   short?: boolean
 }
 
+// Đổi ngôn ngữ
 export function LanguageSwitcher({
   className = DEFAULT_CLASS_NAME,
   short = false,
@@ -28,7 +27,6 @@ export function LanguageSwitcher({
       <select
         id={id}
         value={current}
-        // With short labels, hovering shows the full name of the chosen language.
         title={short && isLanguage(current) ? t(`language.${current}`) : undefined}
         onChange={(event) => {
           const value = event.target.value

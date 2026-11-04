@@ -14,11 +14,6 @@ interface Settled<T> {
   result: ChatResult<T>
 }
 
-// Loads `load(key)` whenever `key` changes (null = nothing to load) and on reload().
-// `load` must be stable (a module-level function). "Loading" is derived from whether the
-// last settled result belongs to the current key and attempt, so the effect never sets
-// state synchronously and a late response for an old key is never shown. During a
-// reload, data that loaded fine stays visible until the new result arrives.
 export function useChatQuery<T>(
   key: string | null,
   load: (key: string) => Promise<ChatResult<T>>,

@@ -1,13 +1,5 @@
--- ChatSOS · Phase 1 · migration 5/5: private attachments bucket and Realtime.
--- Run after 20261016000400_message_triggers.sql. Wrapped in a transaction.
-
 begin;
 
--- Private bucket: files are only reachable through signed URLs issued to members.
--- allowed_mime_types is enforced by Storage against the upload's Content-Type,
--- which the client chooses, so it is one layer only: object names are also
--- restricted to an extension allowlist below, svg/html are never accepted,
--- and the app must render files as images or downloads, never as HTML.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'attachments',
@@ -29,7 +21,7 @@ values (
   ]
 );
 
--- True when the first folder of the object name is a conversation the caller belongs to.
+-- Quyền truy cập tệp
 create function private.can_access_attachment(p_object_name text)
 returns boolean
 language sql
@@ -55,9 +47,6 @@ create policy "attachments: members can read"
     and private.can_access_attachment(name)
   );
 
--- "<conversation_id>/<uuid>.<extension>" only. There are deliberately no UPDATE or
--- DELETE policies for this bucket, so existing files can be neither overwritten
--- (upsert needs UPDATE) nor removed by clients.
 create policy "attachments: members can upload new files"
   on storage.objects for insert to authenticated
   with check (
@@ -66,9 +55,6 @@ create policy "attachments: members can upload new files"
     and private.can_access_attachment(name)
   );
 
--- Postgres Changes for messages. Realtime checks each subscriber's SELECT access
--- (grants + the RLS policy above) before delivering a row, so only members receive
--- it. Being in the publication alone proves nothing: this is verified end to end in step 1D.
 alter publication supabase_realtime add table public.messages;
 
 commit;

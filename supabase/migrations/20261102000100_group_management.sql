@@ -1,22 +1,4 @@
--- ChatSOS · Phase 12 · migration 12: group management.
--- Run after 20261101000100_rate_limits.sql. Wrapped in a transaction.
---
--- 1. System messages: the database writes a line into the chat when a group changes
---    ("A added B", "B left", "A renamed the group to …", "C is now the owner"). Clients can
---    never write, edit or recall one. They also tell the other members' apps over Realtime
---    that the group changed.
--- 2. Members see only the messages sent since they joined, and only those messages' files.
--- 3. Each group has exactly one owner.
--- 4. public.conversation_removals tells a removed member's app (and the other tabs of a
---    member who left) at once, over Realtime: DELETE events are not published (migration 9).
--- 5. RPCs: any member renames the group and adds members; only the owner removes members
---    and hands the group to another member; anyone leaves. An owner who leaves hands the
---    group to the member who joined first; when the last member leaves, the group is
---    deleted. Each RPC locks the group's row first, so changes to one group never overlap.
-
 begin;
-
--- 1. System messages -------------------------------------------------------------------
 
 alter table public.messages
   add column system_event text
@@ -24,11 +6,8 @@ alter table public.messages
       system_event is null
       or system_event in ('member_added', 'member_removed', 'member_left', 'title_changed', 'owner_changed')
     ),
-  -- The member added, removed or made owner. Becomes null when that account is deleted;
-  -- the line then names "a deleted account".
   add column system_target_id uuid references public.profiles (id) on delete set null;
 
--- Lets the "set null" above find the rows quickly when an account is deleted.
 create index messages_system_target_id_idx
   on public.messages (system_target_id)
   where system_target_id is not null;
@@ -38,9 +17,6 @@ alter table public.messages add constraint messages_kind_valid check (
   kind in ('text', 'image', 'file', 'system')
 );
 
--- Same three shapes as migration 6, which now also have no system fields, plus a fourth:
--- a system message has no attachment, cannot have been recalled, and holds text only for
--- a rename (the new title, as the conversations_shape check allows it).
 alter table public.messages drop constraint messages_kind_consistency;
 alter table public.messages add constraint messages_kind_consistency check (
   (
@@ -97,8 +73,6 @@ alter table public.messages add constraint messages_kind_consistency check (
   )
 );
 
--- Clients have no INSERT privilege on system_event / system_target_id, so the check above
--- already refuses a client's system message; the policy refuses it explicitly as well.
 drop policy "messages: members send as themselves" on public.messages;
 create policy "messages: members send as themselves"
   on public.messages for insert to authenticated
@@ -108,7 +82,6 @@ create policy "messages: members send as themselves"
     and private.is_member(conversation_id)
   );
 
--- Same as migration 4, but system messages, like text, have no attachment to check.
 create or replace function private.validate_message_attachment()
 returns trigger
 language plpgsql
@@ -123,8 +96,6 @@ begin
     return new;
   end if;
 
-  -- Non-members and spoofed senders are rejected by RLS right after this trigger;
-  -- returning early means the checks below reveal nothing to them.
   if new.sender_id is distinct from (select auth.uid())
      or not private.is_member(new.conversation_id) then
     return new;
@@ -156,9 +127,6 @@ begin
 end;
 $$;
 
--- Same as migration 6, plus: a system message can never be edited or recalled. Only its
--- system_target_id may change, and only when the database sets it to null because that
--- account was deleted (content and deleted_at, the columns clients may update, stay as they are).
 create or replace function private.guard_message_update()
 returns trigger
 language plpgsql
@@ -206,10 +174,6 @@ begin
 end;
 $$;
 
--- 2. History from the moment a member joined ------------------------------------------------
-
--- When the caller joined the conversation, or null when they are not a member. SECURITY
--- DEFINER for the same reason as private.is_member: policies can use it without recursion.
 create function private.member_since(p_conversation_id uuid)
 returns timestamptz
 language sql
@@ -226,9 +190,6 @@ $$;
 revoke all on function private.member_since(uuid) from public, anon;
 grant execute on function private.member_since(uuid) to authenticated;
 
--- Same as migration 9, except that "is a member" becomes "was a member when the message
--- was sent": for a non-member member_since() is null, so the comparison is null and the
--- row is not visible. ">=" so a new member sees the "X added Y" line written with them.
 drop policy "messages: members read what they have not deleted" on public.messages;
 
 create policy "messages: members read what was sent since they joined"
@@ -250,9 +211,6 @@ create policy "messages: members read what was sent since they joined"
     )
   );
 
--- True when the file belongs to a message the caller could see: one in a conversation
--- they belong to, sent since they joined. The path rule ties every file to its message's
--- conversation (messages_attachment_path_valid).
 create function private.can_read_attachment(p_object_name text)
 returns boolean
 language sql
@@ -274,9 +232,6 @@ $$;
 revoke all on function private.can_read_attachment(text) from public, anon;
 grant execute on function private.can_read_attachment(text) to authenticated;
 
--- Was: any member reads every file in the conversation's folder. Now: the files of
--- messages they can see, plus their own uploads while they are a member (a file not sent
--- yet, or one whose message was recalled, so the app can still remove it).
 drop policy "attachments: members can read" on storage.objects;
 
 create policy "attachments: members read files of messages they can see"
@@ -292,17 +247,11 @@ create policy "attachments: members read files of messages they can see"
     )
   );
 
--- 3. One owner per group -------------------------------------------------------------------
-
 create unique index conversation_members_one_owner
   on public.conversation_members (conversation_id)
   where role = 'owner';
 
--- 4. Removals, for Realtime -----------------------------------------------------------------
-
--- One row per user and group they were removed from or left; written again (removed_at
--- moves on) each time. Readable only by that user. conversation_id has no foreign key on
--- purpose: the row must outlive a group deleted when its last member leaves.
+-- Bảng thành viên bị xóa
 create table public.conversation_removals (
   user_id uuid not null references public.profiles (id) on delete cascade,
   conversation_id uuid not null,
@@ -313,7 +262,6 @@ create table public.conversation_removals (
 alter table public.conversation_removals enable row level security;
 revoke all on table public.conversation_removals from public, anon, authenticated;
 
--- Read only; rows are written by remove_group_member() and leave_group().
 grant select on table public.conversation_removals to authenticated;
 
 create policy "conversation_removals: users read their own"
@@ -322,12 +270,6 @@ create policy "conversation_removals: users read their own"
 
 alter publication supabase_realtime add table public.conversation_removals;
 
--- 5. RPCs -----------------------------------------------------------------------------------
-
--- Locks the group's row and returns the caller's role in it. Not a group, not existing and
--- not a member all give the same error (P0002), so nothing about other groups leaks.
--- Membership is checked before and after the lock: someone may remove the caller meanwhile.
--- Runs only inside the RPCs below (not SECURITY DEFINER, no client EXECUTE).
 create function private.lock_group(p_conversation_id uuid)
 returns text
 language plpgsql
@@ -375,8 +317,7 @@ $$;
 
 revoke all on function private.lock_group(uuid) from public, anon, authenticated;
 
--- Any member. Same title rules as create_group_conversation. The current title again
--- changes nothing and writes no system message, so a retry is harmless.
+-- Đổi tên nhóm
 create function public.rename_group(p_conversation_id uuid, p_title text)
 returns void
 language plpgsql
@@ -405,9 +346,7 @@ begin
 end;
 $$;
 
--- Any member. p_user_ids: no nulls, no duplicates, existing users only. Users already in the
--- group (the caller too) are skipped, so a retry is harmless. The group may then have 50
--- members at most (CS002 otherwise, and nobody is added). Returns how many were added.
+-- Thêm thành viên
 create function public.add_group_members(p_conversation_id uuid, p_user_ids uuid[])
 returns integer
 language plpgsql
@@ -467,8 +406,7 @@ begin
 end;
 $$;
 
--- Owner only (42501 otherwise), never themselves (they leave instead). Removing someone who
--- is no longer a member changes nothing, so a retry is harmless.
+-- Xóa thành viên
 create function public.remove_group_member(p_conversation_id uuid, p_user_id uuid)
 returns void
 language plpgsql
@@ -503,7 +441,7 @@ begin
 end;
 $$;
 
--- Owner only (42501 otherwise). The new owner must be another member of the group.
+-- Chuyển quyền trưởng nhóm
 create function public.transfer_group_ownership(p_conversation_id uuid, p_user_id uuid)
 returns void
 language plpgsql
@@ -530,7 +468,6 @@ begin
     raise exception 'not a member of this group' using errcode = '22023';
   end if;
 
-  -- In this order, so there is never a second owner (conversation_members_one_owner).
   update public.conversation_members m
   set role = 'member'
   where m.conversation_id = p_conversation_id
@@ -546,8 +483,7 @@ begin
 end;
 $$;
 
--- Any member. An owner hands the group to the member who joined first (ties by user id).
--- The last member deletes the group with all its messages; files stay in Storage.
+-- Rời nhóm
 create function public.leave_group(p_conversation_id uuid)
 returns void
 language plpgsql
@@ -590,7 +526,6 @@ begin
     end if;
   end if;
 
-  -- Also tells the caller's other tabs.
   insert into public.conversation_removals (user_id, conversation_id)
   values (v_me, p_conversation_id)
   on conflict (user_id, conversation_id) do update set removed_at = excluded.removed_at;

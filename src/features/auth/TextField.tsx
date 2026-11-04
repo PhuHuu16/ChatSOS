@@ -6,16 +6,11 @@ export interface TextFieldProps
     'id' | 'className' | 'aria-invalid' | 'aria-describedby'
   > {
   label: string
-  // Already translated. Shown under the input and linked to it for screen readers.
   error?: string | null
-  // Placed inside the right edge of the input, e.g. the show-password button.
   trailing?: ReactNode
-  // Placed at the right end of the label row, e.g. the forgot-password link.
   labelAside?: ReactNode
 }
 
-// Styled for the dark sign-in card (AuthLayout).
-// Inputs use 16px text (text-base): smaller text makes iOS Safari zoom in on focus.
 export function TextField({ label, error, trailing, labelAside, ...inputProps }: TextFieldProps) {
   const id = useId()
   const errorId = `${id}-error`

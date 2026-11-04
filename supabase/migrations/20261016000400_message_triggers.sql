@@ -1,11 +1,6 @@
--- ChatSOS · Phase 1 · migration 4/5: message triggers.
--- Run after 20261016000300_rpc.sql. Wrapped in a transaction.
-
 begin;
 
--- For image/file messages, the referenced object must already be uploaded to the
--- attachments bucket by the sender, and the declared MIME type and size must match
--- what Storage recorded. Message fields are therefore not free-form client claims.
+-- Kiểm tra tệp đính kèm
 create function private.validate_message_attachment()
 returns trigger
 language plpgsql
@@ -20,8 +15,6 @@ begin
     return new;
   end if;
 
-  -- Non-members and spoofed senders are rejected by RLS right after this trigger;
-  -- returning early means the checks below reveal nothing to them.
   if new.sender_id is distinct from (select auth.uid())
      or not private.is_member(new.conversation_id) then
     return new;
@@ -53,7 +46,7 @@ begin
 end;
 $$;
 
--- Keeps conversations.last_message_at current for sorting the chat list.
+-- Cập nhật thời gian cuộc trò chuyện
 create function private.touch_conversation()
 returns trigger
 language plpgsql
@@ -69,7 +62,6 @@ begin
 end;
 $$;
 
--- Trigger functions: never callable directly.
 revoke all on function private.validate_message_attachment() from public, anon, authenticated;
 revoke all on function private.touch_conversation() from public, anon, authenticated;
 

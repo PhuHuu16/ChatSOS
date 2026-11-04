@@ -18,48 +18,35 @@ import {
 } from '../features/chat/attachments'
 import { ICON_PROPS } from './iconProps'
 
-// The text box grows with its content up to this height (px), then scrolls.
 const MAX_TEXTAREA_HEIGHT = 160
 
 const FOCUS_RING = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent'
 const ICON_BUTTON = `inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-fg ${FOCUS_RING}`
 
-// An existing message being edited in the box instead of a new one being written.
 export interface ComposerEditing {
-  // The text the box starts with.
   content: string
-  // Waiting for the server to save the edit.
   saving: boolean
-  // Receives the checked (trimmed) text.
   onSave: (content: string) => void
   onCancel: () => void
 }
 
 interface ComposerProps {
-  // Receives the checked (trimmed) text.
   onSend: (content: string) => void
-  // Receives each picked, pasted or dropped file that passed the checks.
   onSendFile: (file: Blob, checked: CheckedFile) => void
   editing?: ComposerEditing | null
-  // Called as the draft changes: true while it has text, false once it is empty or sent.
-  // Not called while editing an existing message.
   onTyping?: (typing: boolean) => void
 }
 
-// Render with a `key` made of the conversation id and the id of the message being edited,
-// so each conversation and each edit starts with its own draft.
+// Ô soạn tin nhắn
 export function Composer({ onSend, onSendFile, editing = null, onTyping }: ComposerProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(editing?.content ?? '')
-  // The first rejected file of the last pick, paste or drop.
   const [fileError, setFileError] = useState<FileCheckErrorKey | null>(null)
   const [dragging, setDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const errorId = useId()
 
-  // `length` counts UTF-16 units, never fewer than code points, so the exact count is
-  // only needed for long drafts.
   const tooLong = draft.length > MESSAGE_MAX_LENGTH && [...draft].length > MESSAGE_MAX_LENGTH
   const canSend = draft.trim() !== '' && !tooLong && !editing?.saving
 
@@ -70,7 +57,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
     textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
   }, [draft])
 
-  // Editing starts with the cursor after the text.
   const startsEditing = editing !== null
   useEffect(() => {
     const textarea = textareaRef.current
@@ -79,7 +65,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
     textarea.setSelectionRange(textarea.value.length, textarea.value.length)
   }, [startsEditing])
 
-  // Empty text is ignored; too long text is explained below the box.
   function submit() {
     const checked = checkTextMessage(draft)
     if (!checked.ok) return
@@ -93,9 +78,7 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
     textareaRef.current?.focus()
   }
 
-  // Each file is sent as its own message; rejected ones are explained below the box.
   function handleFiles(files: File[]) {
-    // While editing, the box belongs to that message.
     if (editing) return
     let firstError: FileCheckErrorKey | null = null
     for (const file of files) {
@@ -106,8 +89,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
     setFileError(firstError)
   }
 
-  // Files dropped anywhere on the page go to the open conversation. AppShell keeps the
-  // browser from opening them instead.
   const handleDrop = useEffectEvent((files: File[]) => handleFiles(files))
   useEffect(() => {
     const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') ?? false
@@ -115,7 +96,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
       if (hasFiles(event)) setDragging(true)
     }
     const onDragLeave = (event: DragEvent) => {
-      // relatedTarget is null when the pointer leaves the window.
       if (event.relatedTarget === null) setDragging(false)
     }
     const onDrop = (event: DragEvent) => {
@@ -133,9 +113,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
     }
   }, [])
 
-  // Enter sends and Shift+Enter starts a new line. On touch screens Enter always starts a
-  // new line and the button sends. Enter that confirms an IME composition (e.g. a
-  // Vietnamese input method) never sends.
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Escape' && editing) {
       event.preventDefault()
@@ -150,7 +127,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
   }
 
   const error = tooLong ? 'chat.errors.messageTooLong' : fileError
-  // The box's border: red for a problem, accent while a file is dragged over the page.
   const boxColours = tooLong
     ? 'border-danger'
     : dragging && !editing
@@ -188,7 +164,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
           className="hidden"
           onChange={(event) => {
             handleFiles([...(event.target.files ?? [])])
-            // Picking the same file again must fire another change.
             event.target.value = ''
           }}
         />
@@ -215,7 +190,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
           }}
           onKeyDown={handleKeyDown}
           onPaste={(event) => {
-            // A pasted screenshot or copied file is sent; pasted text is left to the box.
             const files = [...event.clipboardData.files]
             if (files.length === 0) return
             event.preventDefault()
@@ -225,8 +199,6 @@ export function Composer({ onSend, onSendFile, editing = null, onTyping }: Compo
           aria-label={t('chat.composerPlaceholder')}
           aria-invalid={tooLong}
           aria-describedby={error ? errorId : undefined}
-          // The box around it shows the focus; 16px text on phones keeps iOS Safari from
-          // zooming in on focus.
           className="min-w-0 flex-1 resize-none bg-transparent px-1.5 py-2 text-base leading-5 text-fg outline-none placeholder:text-muted md:text-sm"
         />
         {editing ? (

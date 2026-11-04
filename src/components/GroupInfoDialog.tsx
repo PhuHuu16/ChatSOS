@@ -23,14 +23,11 @@ import { CHIP, CLOSE_BUTTON, DANGER_OUTLINE_BUTTON, DIALOG, DIALOG_FOOTER, DIALO
 import { ICON_PROPS } from './iconProps'
 
 interface GroupInfoDialogProps {
-  // The open group, kept up to date by the caller (title, members, owner).
   conversation: Conversation
   users: User[]
   currentUserId: string
   onClose: () => void
-  // A change was saved: the caller reloads the list.
   onChanged: () => void
-  // The user left the group (or had already left it, e.g. in another tab).
   onLeft: () => void
 }
 
@@ -39,8 +36,7 @@ type Busy = 'rename' | 'add' | 'leave' | `remove:${string}` | `owner:${string}`
 
 const SEARCH_DELAY_MS = 300
 
-// Rendered only while open. Every member can rename the group and add people; the owner
-// can also remove members and hand the group over. Anyone can leave.
+// Thông tin nhóm
 export function GroupInfoDialog({
   conversation,
   users,
@@ -56,14 +52,12 @@ export function GroupInfoDialog({
   const [picked, setPicked] = useState<Profile[]>([])
   const [busy, setBusy] = useState<Busy | null>(null)
   const [error, setError] = useState<DialogError | null>(null)
-  // Blocks a second action before the busy state has re-rendered.
   const busyRef = useRef(false)
 
   const isOwner = conversation.ownerId === currentUserId
   const memberIds = new Set(conversation.memberIds)
   const seatsLeft = Math.max(0, GROUP_MAX_MEMBERS - conversation.memberIds.length - picked.length)
   const nameOf = (id: string) => findUser(users, id)?.displayName || t('chat.system.someone')
-  // The owner first, then the user, then everyone else by name.
   const members = [...conversation.memberIds].sort((a, b) => {
     const rank = (id: string) => (id === conversation.ownerId ? 0 : id === currentUserId ? 1 : 2)
     return rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b))
@@ -81,7 +75,6 @@ export function GroupInfoDialog({
     if (dialog && !dialog.open) dialog.showModal()
   }, [])
 
-  // Runs one change at a time. Resolves to whether it succeeded.
   async function run<T>(action: Busy, work: () => Promise<ChatResult<T>>): Promise<ChatResult<T>> {
     if (busyRef.current) return { ok: false, error: 'chat.errors.groupChangeFailed' }
     busyRef.current = true
@@ -133,7 +126,6 @@ export function GroupInfoDialog({
           : t('chat.groupDialog.leaveConfirm', { name: title })
     if (!window.confirm(question)) return
     void run('leave', () => leaveGroup(conversation.id)).then((result) => {
-      // Already gone (e.g. left in another tab) ends the same way.
       if (result.ok || result.error === 'chat.errors.groupGone') onLeft()
     })
   }
@@ -147,7 +139,6 @@ export function GroupInfoDialog({
       ref={dialogRef}
       aria-labelledby={headingId}
       onClose={onClose}
-      // While a change runs, Escape must not close the dialog and hide its result.
       onCancel={(event) => {
         if (busyRef.current) event.preventDefault()
       }}
@@ -277,7 +268,6 @@ export function GroupInfoDialog({
 
             <label className={FIELD_LABEL}>
               {t('chat.dialog.searchLabel')}
-              {/* type="text": in a search input, Escape clears the text instead of closing the dialog. */}
               <input
                 type="text"
                 enterKeyHint="search"
@@ -372,7 +362,6 @@ export function GroupInfoDialog({
   )
 }
 
-// key = "<current user id>:<username prefix>:<phone>". None of the three contains ":".
 function loadSearch(key: string) {
   const [userId = '', username = '', phone = ''] = key.split(':')
   return searchUsers({ username: username || null, phone: phone || null }, userId)

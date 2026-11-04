@@ -1,16 +1,8 @@
-// Signed URLs for files in a private Storage bucket. Paths requested in the same tick are
-// signed together with one request, and each URL is reused until shortly before it
-// expires. Each cache serves one bucket only, so paths and URLs of different buckets never
-// mix. URLs are never logged: anyone who has one can open the file until it expires.
 import { supabase } from './supabase'
 
 export interface SignedUrlCache {
-  // A URL for the file, or null when it cannot be read (e.g. it does not exist, or the
-  // caller may not read it: Storage answers "not found" for both).
   get: (path: string) => Promise<string | null>
-  // Drops the cached URL, e.g. after the file was replaced, removed or failed to load.
   forget: (path: string) => void
-  // Drops every cached URL, e.g. on sign-out.
   clear: () => void
 }
 
@@ -23,7 +15,6 @@ export function createSignedUrlCache(
   let queue: { path: string; resolve: (url: string | null) => void }[] = []
   let flushTimer: ReturnType<typeof setTimeout> | null = null
 
-  // Signs every path requested in the same tick with one request.
   async function flushQueue() {
     const batch = queue
     queue = []

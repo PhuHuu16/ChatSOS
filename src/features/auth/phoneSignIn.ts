@@ -1,5 +1,3 @@
-// Phone sign-in through the phone-sign-in Edge Function (supabase/functions/phone-sign-in),
-// which looks up the account's email on the server and returns a session for it.
 import { supabase, supabaseKey, supabaseUrl } from '../../lib/supabase'
 import type { SignInResult } from './authContext'
 import { phoneSignInErrorKey, toAuthErrorKey } from './authErrors'
@@ -18,12 +16,10 @@ function isSessionTokens(value: unknown): value is SessionTokens {
     typeof refresh_token === 'string' && refresh_token !== ''
 }
 
-// `phone` must already be in the stored form (+84xxxxxxxxx), see normalizePhone.
+// Đăng nhập bằng số điện thoại
 export async function signInWithPhone(phone: string, password: string): Promise<SignInResult> {
   let response: Response
   try {
-    // Plain fetch, with the publishable key in apikey only: it is not a JWT, so it must not
-    // be sent as "Authorization: Bearer" (supabase.functions.invoke would do that).
     response = await fetch(new URL(FUNCTION_PATH, supabaseUrl), {
       method: 'POST',
       headers: { apikey: supabaseKey, 'Content-Type': 'application/json' },
@@ -37,7 +33,7 @@ export async function signInWithPhone(phone: string, password: string): Promise<
   try {
     body = await response.json()
   } catch {
-    // Treated as an unexpected answer below.
+    // Bỏ qua lỗi
   }
 
   if (!response.ok) {
@@ -46,7 +42,6 @@ export async function signInWithPhone(phone: string, password: string): Promise<
   }
   if (!isSessionTokens(body)) return { ok: false, error: 'auth.errors.unexpected' }
 
-  // Stores the session and emits SIGNED_IN, like signInWithPassword does.
   const { error } = await supabase.auth.setSession(body)
   if (error) return { ok: false, error: toAuthErrorKey(error, 'signIn') }
   return { ok: true }

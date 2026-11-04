@@ -1,21 +1,15 @@
--- ChatSOS · Phase 1 · migration 2/5: conversations, members, messages and their RLS.
--- Run after 20261016000100_profiles.sql. Wrapped in a transaction.
-
 begin;
 
--- Internal helpers live in a schema the Data API does not expose.
 create schema private;
 revoke all on schema private from public;
--- Needed so RLS policies evaluated for signed-in users can call the helpers.
 grant usage on schema private to authenticated;
 
+-- Bảng cuộc trò chuyện
 create table public.conversations (
   id uuid primary key default gen_random_uuid(),
   type text not null
     constraint conversations_type_valid check (type in ('direct', 'group')),
   title text,
-  -- "<smaller uuid>:<larger uuid>" of the two members. Unique, so a pair of
-  -- users can have at most one direct chat, even under concurrent requests.
   direct_key text unique
     constraint conversations_direct_key_format check (
       direct_key is null
@@ -37,6 +31,7 @@ create table public.conversations (
   )
 );
 
+-- Bảng thành viên
 create table public.conversation_members (
   conversation_id uuid not null references public.conversations (id) on delete cascade,
   user_id uuid not null references public.profiles (id) on delete cascade,
@@ -49,11 +44,10 @@ create table public.conversation_members (
 
 create index conversation_members_user_id_idx on public.conversation_members (user_id);
 
+-- Bảng tin nhắn
 create table public.messages (
-  -- Clients may generate the id (optimistic UI); the primary key prevents reuse.
   id uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references public.conversations (id) on delete cascade,
-  -- Always the caller: clients get no INSERT privilege on this column.
   sender_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
   kind text not null
     constraint messages_kind_valid check (kind in ('text', 'image', 'file')),
@@ -65,8 +59,6 @@ create table public.messages (
   attachment_mime text,
   created_at timestamptz not null default now(),
 
-  -- text: content with at least one visible character, no attachment.
-  -- image/file: every attachment field set.
   constraint messages_kind_consistency check (
     (
       kind = 'text'
@@ -84,7 +76,6 @@ create table public.messages (
       and attachment_mime is not null
     )
   ),
-  -- "<conversation_id>/<uuid>.<allowed extension>", inside this message's conversation.
   constraint messages_attachment_path_valid check (
     attachment_path is null
     or (
@@ -92,7 +83,6 @@ create table public.messages (
       and attachment_path ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|jpeg|png|webp|gif|pdf|txt|zip|docx|xlsx|pptx)$'
     )
   ),
-  -- Original file name, shown to users only; never used as a storage path.
   constraint messages_attachment_name_valid check (
     attachment_name is null
     or (
@@ -103,8 +93,6 @@ create table public.messages (
   constraint messages_attachment_size_valid check (
     attachment_size is null or attachment_size between 1 and 20971520
   ),
-  -- Allowed MIME types, each tied to the file extensions it may use. This is the
-  -- same allowlist as the bucket, and stops e.g. a ".png" name declared as a PDF.
   constraint messages_attachment_type_valid check (
     attachment_path is null
     or (substring(attachment_path from '\.([a-z0-9]+)$'), attachment_mime) in (
@@ -130,12 +118,10 @@ create table public.messages (
 create index messages_conversation_created_idx
   on public.messages (conversation_id, created_at desc);
 
--- One stored file can back at most one message.
 create unique index messages_attachment_path_key
   on public.messages (attachment_path)
   where attachment_path is not null;
 
--- Lock down in the same transaction as creation.
 alter table public.conversations enable row level security;
 alter table public.conversation_members enable row level security;
 alter table public.messages enable row level security;
@@ -143,12 +129,10 @@ alter table public.messages enable row level security;
 revoke all on table public.conversations, public.conversation_members, public.messages
   from public, anon, authenticated;
 
--- Conversations and memberships are created only through the RPCs in migration 3.
 grant select on table public.conversations to authenticated;
 grant select on table public.conversation_members to authenticated;
 grant update (last_read_at) on table public.conversation_members to authenticated;
 grant select on table public.messages to authenticated;
--- sender_id and created_at are deliberately absent: they always come from their defaults.
 grant insert (
   id,
   conversation_id,
@@ -160,7 +144,7 @@ grant insert (
   attachment_mime
 ) on table public.messages to authenticated;
 
--- SECURITY DEFINER so policies on conversation_members can use it without recursing into themselves.
+-- Kiểm tra thành viên
 create function private.is_member(p_conversation_id uuid)
 returns boolean
 language sql

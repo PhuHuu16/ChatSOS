@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { getAvatarColorClass, getInitials } from '../features/chat/helpers'
 import { useAvatarUrl } from '../features/profile/avatars'
 
-// Full class names so Tailwind can find them when scanning the source.
 const SIZE_CLASSES = {
   sm: 'size-9 text-xs',
   md: 'size-11 text-sm',
@@ -12,15 +11,12 @@ const SIZE_CLASSES = {
 interface AvatarProps {
   id: string
   name: string
-  // The user's photo in the avatars bucket; the initials are shown without one.
   avatarPath?: string | null
   size?: keyof typeof SIZE_CLASSES
-  // 'square' (rounded corners) marks a group; people are round.
   shape?: 'circle' | 'square'
 }
 
-// Decorative: the name is always rendered as text next to it. The initials stay underneath
-// the photo, so they show while it loads and whenever it cannot be shown.
+// Ảnh đại diện
 export function Avatar({ id, name, avatarPath = null, size = 'md', shape = 'circle' }: AvatarProps) {
   const { url, canRetry, retry } = useAvatarUrl(avatarPath)
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
@@ -28,7 +24,6 @@ export function Avatar({ id, name, avatarPath = null, size = 'md', shape = 'circ
 
   function handleError() {
     setFailedUrl(url)
-    // E.g. the URL expired: one fresh URL is asked for, then the initials stay.
     if (canRetry) retry()
   }
 

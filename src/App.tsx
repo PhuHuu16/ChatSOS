@@ -10,14 +10,12 @@ import { getAuthRedirect } from './routing/authRedirect'
 import { PATHS, navigate } from './routing/navigation'
 import { usePathname } from './routing/usePathname'
 
+// Điều hướng trang xác thực
 function AuthRoutes() {
   const { status } = useAuth()
   const pathname = usePathname()
   const redirect = getAuthRedirect(status, pathname)
 
-  // Navigating is a side effect, so it runs after render. replace: Back must not return
-  // to a page that would immediately redirect again. Running twice (StrictMode) replaces
-  // the same entry with the same path, which changes nothing.
   useEffect(() => {
     if (redirect) navigate(redirect, { replace: true })
   }, [redirect])
@@ -29,6 +27,7 @@ function AuthRoutes() {
   return <AppShell />
 }
 
+// Ứng dụng chính
 function App() {
   return (
     <AuthProvider>

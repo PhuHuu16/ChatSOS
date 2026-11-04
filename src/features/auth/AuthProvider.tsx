@@ -16,11 +16,7 @@ import { signInWithPhone } from './phoneSignIn'
 import { clearRecovery, markRecovery, readRecoveryUserId } from './recoveryFlag'
 import type { SignInIdentifier } from './validation'
 
-// These never update state themselves: the onAuthStateChange listener below is the single
-// source of truth for the session. The one exception is updatePassword (in the provider),
-// which ends a recovery without any auth event to report it. Nothing here logs passwords,
-// codes, tokens or raw errors.
-
+// Đăng nhập
 async function signIn(identifier: SignInIdentifier, password: string): Promise<SignInResult> {
   try {
     if (identifier.kind === 'phone') return await signInWithPhone(identifier.phone, password)
@@ -32,6 +28,7 @@ async function signIn(identifier: SignInIdentifier, password: string): Promise<S
   }
 }
 
+// Đăng ký
 async function signUp({
   email,
   password,
@@ -43,8 +40,6 @@ async function signUp({
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      // Read by the handle_new_user trigger, which creates the profile row, and checked
-      // first by the Before User Created hook (migration 10).
       options: { data: { username, display_name: displayName, phone } },
     })
     if (error) return { ok: false, error: toAuthErrorKey(error, 'signUp') }
@@ -56,13 +51,9 @@ async function signUp({
   }
 }
 
+// Đăng xuất
 async function signOut(): Promise<SignOutResult> {
   try {
-    // 'local' signs out this device only. When the stored session is removed, the listener
-    // receives SIGNED_OUT before this resolves. An error does not tell whether that
-    // happened: auth-js (2.117) still removes the session after most server errors, but
-    // keeps it when the current session cannot be read or refreshed (e.g. offline).
-    // The listener reports which; callers must not treat ok: false as "still signed in".
     const { error } = await supabase.auth.signOut({ scope: 'local' })
     return { ok: !error }
   } catch {
@@ -70,8 +61,7 @@ async function signOut(): Promise<SignOutResult> {
   }
 }
 
-// Sends the recovery email (a code, or a link with the default template). The answer is
-// the same whether or not the address has an account, see resetRequestErrorKey.
+// Gửi mã khôi phục mật khẩu
 async function requestPasswordReset(email: string): Promise<AuthActionResult> {
   let failure: unknown
   try {
@@ -84,8 +74,7 @@ async function requestPasswordReset(email: string): Promise<AuthActionResult> {
   return key ? { ok: false, error: key } : { ok: true }
 }
 
-// On success auth-js stores the session and emits PASSWORD_RECOVERY before this resolves;
-// the listener then marks the recovery.
+// Xác minh mã khôi phục
 async function verifyRecoveryCode(email: string, code: string): Promise<AuthActionResult> {
   try {
     const { error } = await supabase.auth.verifyOtp({ email, token: code, type: 'recovery' })
@@ -96,7 +85,6 @@ async function verifyRecoveryCode(email: string, code: string): Promise<AuthActi
   }
 }
 
-// How long signing out the other sessions may delay entering the app.
 const SIGN_OUT_OTHERS_TIMEOUT_MS = 5000
 
 function statusFor(session: Session | null): AuthStatus {
@@ -109,17 +97,11 @@ interface AuthState {
   session: Session | null
 }
 
+// Quản lý phiên đăng nhập
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: 'loading', session: null })
 
   useEffect(() => {
-    // Each subscription gets its own INITIAL_SESSION once the stored session is restored
-    // (null if there is none or restoring failed), then SIGNED_IN / SIGNED_OUT /
-    // TOKEN_REFRESHED. StrictMode mounts twice in development: the first subscription is
-    // removed in cleanup, and `active` guards against a late call after that.
-    // The callback only sets state; it never calls back into Supabase.
-    // PASSWORD_RECOVERY: signed in by a recovery code or link (also relayed from other
-    // tabs). Without a session any recovery is over.
     let active = true
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return
@@ -133,9 +115,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Saves the new password, ends the recovery and signs the account out everywhere else:
-  // someone who forgot their password may also have had it taken. Failing to sign out
-  // the others does not undo the new password.
   const updatePassword = useCallback(async (password: string): Promise<AuthActionResult> => {
     try {
       const { error } = await supabase.auth.updateUser({ password })
@@ -143,7 +122,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       return { ok: false, error: 'auth.errors.unexpected' }
     }
-    // scope 'others' keeps this device's session and emits no SIGNED_OUT here.
     await Promise.race([
       supabase.auth.signOut({ scope: 'others' }).catch(() => undefined),
       new Promise((resolve) => setTimeout(resolve, SIGN_OUT_OTHERS_TIMEOUT_MS)),
@@ -164,7 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       verifyRecoveryCode,
       updatePassword,
-      // Signing out ends the recovery (the listener clears it on SIGNED_OUT).
       cancelRecovery: signOut,
     }),
     [state, updatePassword],
