@@ -67,6 +67,10 @@ const ROW_X = 'px-4 md:px-5'
 const BUBBLE = 'max-w-full rounded-2xl px-3 py-1.5 whitespace-pre-wrap wrap-break-word'
 const MINE_BUBBLE = 'bg-accent text-white'
 const OTHER_BUBBLE = 'bg-bubble text-fg'
+const BUBBLE_ROW_WIDTH = 'max-w-[80%] md:max-w-[70%] [@media(hover:hover)]:max-w-[min(70%,calc(100%-7.5rem))]'
+const TOUCH_TOOLBAR = '[@media(hover:none)]:-top-3.5 [@media(hover:none)]:translate-y-0'
+const MINE_TOOLBAR = `right-full mr-1 ${TOUCH_TOOLBAR} [@media(hover:none)]:right-auto [@media(hover:none)]:mr-0 [@media(hover:none)]:left-12`
+const OTHER_TOOLBAR = `left-full ml-1 ${TOUCH_TOOLBAR} [@media(hover:none)]:left-auto [@media(hover:none)]:ml-0 [@media(hover:none)]:right-12`
 const SMALL_BUTTON_CLASS =
   'rounded px-1 font-medium underline hover:opacity-75 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent'
 const TOOL_BUTTON_CLASS =
@@ -492,84 +496,82 @@ export function MessageList({
             )
 
             const toolbar = !selecting && (
-              <>
-                <div
-                  data-message-menu
-                  className={`absolute -top-3.5 z-10 flex gap-0.5 rounded-lg border border-line bg-canvas p-0.5 text-muted shadow-md ${
-                    isMine
-                      ? 'right-4 md:right-5 [@media(hover:none)]:right-auto [@media(hover:none)]:left-12'
-                      : 'right-4 md:right-5 [@media(hover:none)]:right-12'
-                  } ${
-                    menuOpen
-                      ? ''
-                      : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:hidden'
-                  }`}
-                >
-                  {canChange && message.kind === 'text' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuFor(null)
-                        onStartEdit(message)
-                      }}
-                      disabled={changing}
-                      aria-label={t('chat.edit')}
-                      title={t('chat.edit')}
-                      className={`${TOOL_BUTTON_CLASS} hover:text-fg`}
-                    >
-                      <svg {...ICON_PROPS} width={16} height={16}>
-                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                      </svg>
-                    </button>
-                  )}
+              <div
+                data-message-menu
+                className={`absolute top-1/2 z-10 flex -translate-y-1/2 gap-0.5 rounded-lg border border-line bg-canvas p-0.5 text-muted shadow-md ${
+                  isMine ? MINE_TOOLBAR : OTHER_TOOLBAR
+                } ${
+                  menuOpen
+                    ? ''
+                    : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:hidden'
+                }`}
+              >
+                {canChange && message.kind === 'text' && (
                   <button
                     type="button"
                     onClick={() => {
                       setMenuFor(null)
-                      onToggleSelect(message)
+                      onStartEdit(message)
                     }}
                     disabled={changing}
-                    aria-label={t('chat.select')}
-                    title={t('chat.select')}
+                    aria-label={t('chat.edit')}
+                    title={t('chat.edit')}
                     className={`${TOOL_BUTTON_CLASS} hover:text-fg`}
                   >
                     <svg {...ICON_PROPS} width={16} height={16}>
-                      <rect x="3" y="3" width="18" height="18" rx="3" />
-                      <path d="m8 12 3 3 5-6" />
+                      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
                     </svg>
                   </button>
-                  {canChange && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuFor(null)
-                        onRecall(message)
-                      }}
-                      disabled={changing}
-                      aria-label={t('chat.recall')}
-                      title={t('chat.recall')}
-                      className={`${TOOL_BUTTON_CLASS} text-danger`}
-                    >
-                      <svg {...ICON_PROPS} width={16} height={16}>
-                        <path d="M3 6h18" />
-                        <path d="M8 6V4h8v2" />
-                        <path d="M6 6l1 14h10l1-14" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+                )}
                 <button
                   type="button"
-                  data-message-menu
-                  aria-label={t('chat.messageActions')}
-                  aria-expanded={menuOpen}
+                  onClick={() => {
+                    setMenuFor(null)
+                    onToggleSelect(message)
+                  }}
                   disabled={changing}
-                  onClick={() => setMenuFor(menuOpen ? null : message.id)}
-                  className={`absolute top-1 ${isMine ? 'left-3' : 'right-3'} rounded-md px-2 py-0.5 text-base leading-none text-muted hover:bg-subtle hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [@media(hover:hover)]:hidden`}
+                  aria-label={t('chat.select')}
+                  title={t('chat.select')}
+                  className={`${TOOL_BUTTON_CLASS} hover:text-fg`}
                 >
-                  <span aria-hidden="true">⋯</span>
+                  <svg {...ICON_PROPS} width={16} height={16}>
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                    <path d="m8 12 3 3 5-6" />
+                  </svg>
                 </button>
-              </>
+                {canChange && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuFor(null)
+                      onRecall(message)
+                    }}
+                    disabled={changing}
+                    aria-label={t('chat.recall')}
+                    title={t('chat.recall')}
+                    className={`${TOOL_BUTTON_CLASS} text-danger`}
+                  >
+                    <svg {...ICON_PROPS} width={16} height={16}>
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M6 6l1 14h10l1-14" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )
+            const menuButton = !selecting && (
+              <button
+                type="button"
+                data-message-menu
+                aria-label={t('chat.messageActions')}
+                aria-expanded={menuOpen}
+                disabled={changing}
+                onClick={() => setMenuFor(menuOpen ? null : message.id)}
+                className={`absolute top-1 ${isMine ? 'left-3' : 'right-3'} rounded-md px-2 py-0.5 text-base leading-none text-muted hover:bg-subtle hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [@media(hover:hover)]:hidden`}
+              >
+                <span aria-hidden="true">⋯</span>
+              </button>
             )
 
             return (
@@ -620,7 +622,7 @@ export function MessageList({
                       </p>
                     )}
                     <div
-                      className={`flex max-w-[80%] items-end gap-2 md:max-w-[70%] ${
+                      className={`flex items-end gap-2 [@media(hover:hover)]:relative ${BUBBLE_ROW_WIDTH} ${
                         isMine ? 'flex-row-reverse' : ''
                       }`}
                     >
@@ -655,9 +657,10 @@ export function MessageList({
                           {time}
                         </span>
                       )}
+                      {toolbar}
                     </div>
                   </div>
-                  {toolbar}
+                  {menuButton}
                 </li>
               </Fragment>
             )
@@ -670,7 +673,7 @@ export function MessageList({
               <li key={message.id} className={`flex ${ROW_X} ${head ? 'pt-2' : 'pt-0.5'} pb-0.5`}>
                 <div className="flex min-w-0 flex-1 flex-col items-end">
                   <div
-                    className={`flex max-w-[80%] min-w-0 flex-col items-end gap-1 md:max-w-[70%] ${
+                    className={`flex min-w-0 flex-col items-end gap-1 ${BUBBLE_ROW_WIDTH} ${
                       message.status === 'failed' ? '' : 'opacity-70'
                     }`}
                   >
