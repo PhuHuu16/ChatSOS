@@ -74,25 +74,25 @@ React 19, TypeScript, Vite, Tailwind CSS v4, i18next, supabase-js
 ### 1. Database Supabase
 
 Mở **Supabase Dashboard → SQL Editor** và chạy lần lượt 13 file trong
-`supabase/migrations/`, mỗi lần một file, theo đúng thứ tự tên file:
+`supabase/migrations/`, mỗi lần một file, theo đúng thứ tự dưới đây (tên file không còn số thứ tự):
 
-1. `20261016000100_profiles.sql`: hồ sơ người dùng.
-2. `20261016000200_conversations.sql`: cuộc trò chuyện, thành viên, tin nhắn và RLS.
-3. `20261016000300_rpc.sql`: hàm tạo chat riêng và nhóm.
-4. `20261016000400_message_triggers.sql`: kiểm tra tin nhắn và tệp đính kèm.
-5. `20261016000500_storage_realtime.sql`: bucket `attachments` (riêng tư) và Realtime.
-6. `20261028000100_edit_recall_messages.sql`: sửa và thu hồi tin (giới hạn 2 phút).
-7. `20261028000200_typing_and_read_receipts.sql`: kênh "đang nhập" riêng tư và "đã xem".
-8. `20261029000100_avatars.sql`: bucket `avatars` (riêng tư) cho ảnh đại diện.
-9. `20261030000100_delete_messages_and_conversations.sql`: xoá tin và xoá lịch sử cuộc
+1. `profiles.sql`: hồ sơ người dùng.
+2. `conversations.sql`: cuộc trò chuyện, thành viên, tin nhắn và RLS.
+3. `rpc.sql`: hàm tạo chat riêng và nhóm.
+4. `message_triggers.sql`: kiểm tra tin nhắn và tệp đính kèm.
+5. `storage_realtime.sql`: bucket `attachments` (riêng tư) và Realtime.
+6. `edit_recall_messages.sql`: sửa và thu hồi tin (giới hạn 2 phút).
+7. `typing_and_read_receipts.sql`: kênh "đang nhập" riêng tư và "đã xem".
+8. `avatars.sql`: bucket `avatars` (riêng tư) cho ảnh đại diện.
+9. `delete_messages_and_conversations.sql`: xoá tin và xoá lịch sử cuộc
    trò chuyện ở phía mình; Realtime không còn gửi sự kiện DELETE.
-10. `20261031000100_phone_and_admin_users.sql`: số điện thoại trong hồ sơ, hook kiểm tra
+10. `phone_and_admin_users.sql`: số điện thoại trong hồ sơ, hook kiểm tra
     lúc đăng ký, tìm theo số điện thoại, view `admin.users`.
-11. `20261101000100_rate_limits.sql`: giới hạn số lần đăng nhập bằng số điện thoại và số
+11. `rate_limits.sql`: giới hạn số lần đăng nhập bằng số điện thoại và số
     lần tìm theo số điện thoại.
-12. `20261102000100_group_management.sql`: đổi tên nhóm, thêm, xoá thành viên, chuyển quyền
+12. `group_management.sql`: đổi tên nhóm, thêm, xoá thành viên, chuyển quyền
     trưởng nhóm, rời nhóm, tin hệ thống; thành viên chỉ đọc tin từ lúc vào nhóm.
-13. `20261104000100_foreign_key_indexes.sql`: thêm index cho người gửi tin và người tạo
+13. `foreign_key_indexes.sql`: thêm index cho người gửi tin và người tạo
     cuộc trò chuyện, để xoá tài khoản nhanh hơn.
 
 Mỗi file chạy trong một transaction: lỗi ở đâu thì không thay đổi gì.
@@ -101,24 +101,24 @@ Kiểm tra thêm trong Dashboard: **Settings → Data API → Exposed schemas** 
 có `private`.
 
 Muốn gỡ riêng phần ảnh đại diện (migration 8), làm theo hướng dẫn ở đầu file
-`supabase/rollbacks/20261029000100_avatars_rollback.sql`: script tự từ chối khi còn
+`supabase/rollbacks/avatars_rollback.sql`: script tự từ chối khi còn
 hồ sơ dùng ảnh hoặc bucket còn tệp, và không bao giờ xoá dữ liệu người dùng.
 
-Tương tự, `supabase/rollbacks/20261030000100_delete_messages_and_conversations_rollback.sql`
+Tương tự, `supabase/rollbacks/delete_messages_and_conversations_rollback.sql`
 gỡ migration 9. Script tự từ chối khi còn tin đã ẩn hoặc mốc xoá lịch sử, vì gỡ đi thì
 những tin người dùng đã xoá sẽ hiện lại với họ.
 
-Gỡ migration 11 bằng `supabase/rollbacks/20261101000100_rate_limits_rollback.sql`, sau khi
+Gỡ migration 11 bằng `supabase/rollbacks/rate_limits_rollback.sql`, sau khi
 đã gỡ hoặc tắt Edge Function `phone-sign-in`. Gỡ migration 10 bằng
-`supabase/rollbacks/20261031000100_phone_and_admin_users_rollback.sql`, sau khi đã tắt
+`supabase/rollbacks/phone_and_admin_users_rollback.sql`, sau khi đã tắt
 hook *Before User Created*. Script tự từ chối khi còn hồ sơ có số điện thoại; hướng dẫn
 chi tiết nằm ở đầu từng file.
 
-Gỡ migration 12 bằng `supabase/rollbacks/20261102000100_group_management_rollback.sql`.
+Gỡ migration 12 bằng `supabase/rollbacks/group_management_rollback.sql`.
 Script tự từ chối khi còn tin hệ thống ("A đã thêm B"), vì chúng không hợp với quy tắc tin
 nhắn cũ. Sau khi gỡ, thành viên lại đọc được cả tin gửi trước lúc họ vào nhóm.
 
-Gỡ migration 13 bằng `supabase/rollbacks/20261104000100_foreign_key_indexes_rollback.sql`
+Gỡ migration 13 bằng `supabase/rollbacks/foreign_key_indexes_rollback.sql`
 (chỉ xoá hai index, không đổi dữ liệu).
 
 ### 2. Cấu hình Auth trong Dashboard
