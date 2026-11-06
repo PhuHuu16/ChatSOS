@@ -64,7 +64,9 @@ interface OlderMessages {
 }
 
 const ROW_X = 'px-4 md:px-5'
-const TEXT_INSET = 'pr-4 pl-16 md:pr-5 md:pl-17'
+const BUBBLE = 'max-w-full rounded-2xl px-3 py-1.5 whitespace-pre-wrap wrap-break-word'
+const MINE_BUBBLE = 'bg-accent text-white'
+const OTHER_BUBBLE = 'bg-bubble text-fg'
 const SMALL_BUTTON_CLASS =
   'rounded px-1 font-medium underline hover:opacity-75 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent'
 const TOOL_BUTTON_CLASS =
@@ -368,7 +370,6 @@ export function MessageList({
     return userId === currentUserId ? t('chat.you') : t('chat.system.someone')
   }
 
-  const ownUser = findUser(users, currentUserId)
   const ownAsSender = (createdAt: string) =>
     ({ senderId: currentUserId, kind: 'text', createdAt }) as const
 
@@ -485,7 +486,7 @@ export function MessageList({
                 ? 'bg-accent-soft'
                 : menuOpen
                   ? 'bg-hover'
-                  : 'hover:bg-hover'
+                  : ''
             const time = (
               <time dateTime={message.createdAt}>{formatTime(message.createdAt, language)}</time>
             )
@@ -494,7 +495,11 @@ export function MessageList({
               <>
                 <div
                   data-message-menu
-                  className={`absolute -top-3.5 right-4 z-10 flex gap-0.5 rounded-lg border border-line bg-canvas p-0.5 text-muted shadow-md md:right-5 [@media(hover:none)]:right-12 ${
+                  className={`absolute -top-3.5 z-10 flex gap-0.5 rounded-lg border border-line bg-canvas p-0.5 text-muted shadow-md ${
+                    isMine
+                      ? 'right-4 md:right-5 [@media(hover:none)]:right-auto [@media(hover:none)]:left-12'
+                      : 'right-4 md:right-5 [@media(hover:none)]:right-12'
+                  } ${
                     menuOpen
                       ? ''
                       : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:hidden'
@@ -560,7 +565,7 @@ export function MessageList({
                   aria-expanded={menuOpen}
                   disabled={changing}
                   onClick={() => setMenuFor(menuOpen ? null : message.id)}
-                  className="absolute top-1 right-3 rounded-md px-2 py-0.5 text-base leading-none text-muted hover:bg-subtle hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [@media(hover:hover)]:hidden"
+                  className={`absolute top-1 ${isMine ? 'left-3' : 'right-3'} rounded-md px-2 py-0.5 text-base leading-none text-muted hover:bg-subtle hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent [@media(hover:hover)]:hidden`}
                 >
                   <span aria-hidden="true">⋯</span>
                 </button>
@@ -574,7 +579,7 @@ export function MessageList({
                 <li
                   data-message-id={message.id}
                   onClick={selecting ? () => onToggleSelect(message) : undefined}
-                  className={`group relative flex gap-3 ${ROW_X} ${head ? 'pt-2' : 'pt-0.5'} pb-0.5 ${rowColour} ${
+                  className={`group relative flex gap-2 ${ROW_X} ${head ? 'pt-2' : 'pt-0.5'} pb-0.5 ${rowColour} ${
                     selecting ? 'cursor-pointer' : ''
                   }`}
                 >
@@ -589,58 +594,68 @@ export function MessageList({
                       className="mt-1 size-4 shrink-0 self-start accent-accent"
                     />
                   )}
-                  <div className="w-9 shrink-0">
-                    {head ? (
-                      <Avatar
-                        id={message.senderId}
-                        name={senderName}
-                        avatarPath={findUser(users, message.senderId)?.avatarPath ?? null}
-                        size="sm"
-                        shape="square"
-                      />
-                    ) : (
-                      <span
-                        className={`block pt-0.5 text-right text-[11px] leading-5 text-muted group-hover:opacity-100 ${
-                          menuOpen ? '' : 'opacity-0'
-                        }`}
-                      >
-                        {time}
-                      </span>
-                    )}
-                  </div>
+                  {!isMine && (
+                    <div className="w-9 shrink-0">
+                      {head && (
+                        <Avatar
+                          id={message.senderId}
+                          name={senderName}
+                          avatarPath={findUser(users, message.senderId)?.avatarPath ?? null}
+                          size="sm"
+                        />
+                      )}
+                    </div>
+                  )}
                   <div
-                    className={`min-w-0 flex-1 ${changing ? 'opacity-60' : ''} ${
-                      selecting ? 'pointer-events-none' : ''
-                    }`}
+                    className={`flex min-w-0 flex-1 flex-col ${isMine ? 'items-end' : 'items-start'} ${
+                      changing ? 'opacity-60' : ''
+                    } ${selecting ? 'pointer-events-none' : ''}`}
                   >
                     {head && (
-                      <p className="flex items-baseline gap-2">
-                        <span className="truncate font-semibold">{senderName}</span>
-                        <span className="shrink-0 text-xs text-muted">{time}</span>
+                      <p className="flex max-w-full items-baseline gap-2 px-1 pb-0.5 text-xs text-muted">
+                        {!isMine && conversation.type === 'group' && (
+                          <span className="truncate font-semibold text-fg">{senderName}</span>
+                        )}
+                        <span className="shrink-0">{time}</span>
                       </p>
                     )}
-                    {recalled ? (
-                      <p className="text-muted italic">{t('chat.recalled')}</p>
-                    ) : (
-                      <>
-                        {message.attachment && (message.kind === 'image' || message.kind === 'file') && (
-                          <div className="mt-1">
-                            <AttachmentView
-                              kind={message.kind}
-                              attachment={message.attachment}
-                            />
-                          </div>
-                        )}
-                        {message.content && (
-                          <p className="whitespace-pre-wrap wrap-break-word">
-                            {message.content}
-                            {message.editedAt && (
-                              <span className="ml-1 text-xs text-muted">({t('chat.edited')})</span>
-                            )}
+                    <div
+                      className={`flex max-w-[80%] items-end gap-2 md:max-w-[70%] ${
+                        isMine ? 'flex-row-reverse' : ''
+                      }`}
+                    >
+                      <div className={`flex min-w-0 flex-col gap-1 ${isMine ? 'items-end' : 'items-start'}`}>
+                        {recalled ? (
+                          <p className={`${BUBBLE} border border-line text-muted italic`}>
+                            {t('chat.recalled')}
                           </p>
+                        ) : (
+                          <>
+                            {message.attachment &&
+                              (message.kind === 'image' || message.kind === 'file') && (
+                                <AttachmentView kind={message.kind} attachment={message.attachment} />
+                              )}
+                            {message.content && (
+                              <p className={`${BUBBLE} ${isMine ? MINE_BUBBLE : OTHER_BUBBLE}`}>
+                                {message.content}
+                                {message.editedAt && (
+                                  <span className="ml-1 text-xs opacity-75">({t('chat.edited')})</span>
+                                )}
+                              </p>
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
+                      </div>
+                      {!head && (
+                        <span
+                          className={`shrink-0 pb-1 text-[11px] text-muted group-hover:opacity-100 ${
+                            menuOpen ? '' : 'opacity-0'
+                          }`}
+                        >
+                          {time}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {toolbar}
                 </li>
@@ -652,45 +667,35 @@ export function MessageList({
             const previous = previousPending ? ownAsSender(previousPending.createdAt) : shown.at(-1)
             const head = startsGroup(previous, ownAsSender(message.createdAt))
             return (
-              <li key={message.id} className={`flex gap-3 ${ROW_X} ${head ? 'pt-2' : 'pt-0.5'} pb-0.5`}>
-                <div className="w-9 shrink-0">
-                  {head && (
-                    <Avatar
-                      id={currentUserId}
-                      name={nameOf(currentUserId)}
-                      avatarPath={ownUser?.avatarPath ?? null}
-                      size="sm"
-                      shape="square"
-                    />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  {head && <p className="font-semibold">{nameOf(currentUserId)}</p>}
-                  <div className={message.status === 'failed' ? '' : 'opacity-70'}>
+              <li key={message.id} className={`flex ${ROW_X} ${head ? 'pt-2' : 'pt-0.5'} pb-0.5`}>
+                <div className="flex min-w-0 flex-1 flex-col items-end">
+                  <div
+                    className={`flex max-w-[80%] min-w-0 flex-col items-end gap-1 md:max-w-[70%] ${
+                      message.status === 'failed' ? '' : 'opacity-70'
+                    }`}
+                  >
                     {message.upload && (
-                      <div className="mt-1">
-                        <AttachmentView
-                          kind={message.upload.checked.kind}
-                          attachment={{
-                            path: message.upload.path,
-                            name: message.upload.checked.name,
-                            size: message.upload.checked.size,
-                            mime: message.upload.checked.mime,
-                          }}
-                          pending
-                        />
-                      </div>
+                      <AttachmentView
+                        kind={message.upload.checked.kind}
+                        attachment={{
+                          path: message.upload.path,
+                          name: message.upload.checked.name,
+                          size: message.upload.checked.size,
+                          mime: message.upload.checked.mime,
+                        }}
+                        pending
+                      />
                     )}
                     {message.content && (
-                      <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+                      <p className={`${BUBBLE} ${MINE_BUBBLE}`}>{message.content}</p>
                     )}
                   </div>
                   {message.status === 'sending' ? (
-                    <p role="status" className="mt-0.5 text-xs text-muted">
+                    <p role="status" className="mt-0.5 px-1 text-xs text-muted">
                       {t(message.upload ? 'chat.uploading' : 'chat.sending')}
                     </p>
                   ) : (
-                    <div role="alert" className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-danger">
+                    <div role="alert" className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 px-1 text-xs text-danger">
                       <p>{t(message.error ?? 'chat.errors.sendFailed')}</p>
                       <button
                         type="button"
@@ -714,7 +719,7 @@ export function MessageList({
           })}
         </ol>
         {receipt && positioned && (
-          <p className={`mt-0.5 text-xs text-muted ${TEXT_INSET}`}>{receipt}</p>
+          <p className={`mt-0.5 text-right text-xs text-muted ${ROW_X}`}>{receipt}</p>
         )}
       </div>
       <p

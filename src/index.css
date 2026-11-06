@@ -19,6 +19,7 @@
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-subtle: var(--subtle);
+  --color-bubble: var(--bubble);
   --color-hover: var(--hover);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
@@ -49,6 +50,7 @@
     --canvas: #ffffff;
     --surface: #ffffff;
     --subtle: #f4f4f5;
+    --bubble: #e9e9eb;
     --hover: #fafafa;
     --line: #e4e4e7;
     --line-strong: #d4d4d8;
@@ -78,6 +80,7 @@
     --canvas: #18181b;
     --surface: #1f1f23;
     --subtle: #232327;
+    --bubble: #2e2e33;
     --hover: #1f1f23;
     --line: #2e2e33;
     --line-strong: #3f3f46;
