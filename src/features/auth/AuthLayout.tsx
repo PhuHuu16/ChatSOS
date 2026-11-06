@@ -24,7 +24,9 @@ export function AuthLayout({ title, children, footer, wide = false }: AuthLayout
     >
       <header className="flex items-center justify-end gap-2 px-4 py-3 sm:px-6 sm:py-5">
         <ThemeSwitcher className={cornerControl} />
-        <LanguageSwitcher className={`h-9 px-2 text-sm ${cornerControl}`} />
+        <LanguageSwitcher
+          className={`h-9 px-2 text-sm ${cornerControl} *:bg-zinc-900 *:text-zinc-100`}
+        />
       </header>
 
       <main className="flex flex-1 flex-col items-center gap-6 px-4 pt-2 pb-12 sm:justify-center sm:pt-0">
